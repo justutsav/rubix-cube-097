@@ -1,0 +1,92 @@
+# Decisions
+
+What is settled and why. Add to the bottom with a date. If a task conflicts with one of
+these, stop and flag it — do not silently resolve.
+
+## 2026-09-25 — the customer is a District Collector as much as a beneficiary
+
+Four of the five "Basic Issues under GIA" in the PS are administrative: perspective plans,
+participant identification, placement, inter-department coordination, no ground staff. The
+scheme's decision-maker is the **DL-PACC chaired by the District Collector, meeting quarterly**,
+and its artefact is the **Perspective Plan on `pmajay.dosje.gov.in`**, due in the first week of
+April under the May 2023 revision's calendar. We ship the officer
+half. Evidence: `docs/Utsav/research/01-the-customer.md` §3, §10.
+
+## 2026-09-25 — voice-first, multi-channel. The "app" is one of four surfaces
+
+The PS names IVR, WhatsApp voice notes, and mobile/kiosk. Reality adds assisted mode, because
+**51.6% of rural women 15+ own no mobile phone** and the guidelines mandate **30% women** in
+skill programmes. One interview engine, four thin transports, plus a desktop console for the
+district PIU. PS 26154 was "dashboard, desktop, done" — that instinct does not transfer.
+
+## 2026-09-25 — the interview is a finite state machine, not an agent
+
+Seven mandated fields in a fixed order. An FSM owns the flow; the LLM only ever answers
+"which value of this closed enum did they mean, and how confident are you". Every turn is
+replayable and every extraction is a logged `(transcript → value, confidence)` pair. An LLM
+that conducts the interview is slower, unreproducible, wanders in front of judges, and
+destroys the audit trail this scheme will eventually need.
+
+## 2026-09-25 — assume the transcript is wrong
+
+Best published WER on dialectal telephone Hindi is **26.8** (IndicWhisper); Google STT is
+**59.9**. The unit of the system is therefore a **field classified over a closed set**, not a
+transcription. Order of attack: ASR `n`-best → vernacular trade lexicon with phonetic/fuzzy
+match → small-LLM enum classification → **spoken confirmation**. Low confidence is a re-ask,
+not an error.
+
+## 2026-09-25 — we do not claim a dialect ASR model
+
+Bhojpuri, Rajasthani, Chhattisgarhi and Magahi have ~11 crore speakers between them, zero
+coverage in Bhashini/Sarvam/Google, and ~18 hours of published corpus for four of them
+combined. We absorb the error in the matching layer and we **publish the measurement**. Any
+sentence implying we support dialects at the model level is a lie a MoSJE jury can catch.
+
+## 2026-09-25 — eligibility is a hard gate before ranking, never a score
+
+NSQF 2023 publishes entry requirements per level, including that Levels 1-2 need no formal
+education and that relevant experience substitutes for schooling from Level 2.5 up. Rank only
+inside the eligible set. Output **NEAR-MISS with the exact gap** — that is the PS's "skill gaps
+requiring intervention". A recommendation the person cannot enrol in manufactures the CAG's
+41% placement figure one call at a time.
+
+## 2026-09-25 — qualification identifiers are imported, never invented
+
+QP codes, NOS codes, NSQF levels, awarding bodies, durations and eligibility come from the
+official **NQR** export. Fields the source does not provide are **NULL, not guessed**.
+Prototype data is never labelled official. NCO-2015 is a *signal* only — NCVET's own audit
+found 156 of 2,157 qualifications mis-mapped and 256 unmappable. A wrong QP code sends a real
+person to a centre that will not admit them; it is a defect, not a rounding error.
+
+## 2026-09-25 — audio is discarded after confirmed transcription
+
+DPDP Rules 2025 are in force. Raw voice is the most sensitive thing this system will ever hold
+and the least necessary to keep. Consent is a spoken, logged, withdrawable FSM state, and the
+mobility/disability field branches to a **guardian-consent path** — Rule 10 requires verifiable
+consent and a checkbox does not satisfy it.
+
+## 2026-09-25 — fixed prompts are pre-rendered audio files
+
+The consent script, the seven questions, the re-prompts and the acknowledgements are fixed
+text. Synthesise once, ship as WAVs, TTS only the personalised tail. This is what keeps a turn
+under two seconds on a voice channel, makes the kiosk work offline, drops per-call cost to
+near zero, and lets a human fix the ones that sound cold.
+
+## 2026-09-25 — route to PM-DAKSH and SIA rather than re-skin them
+
+The PM-AJAY guidelines forbid overlap with PM-DAKSH by name. MSDE + Meta + Sarvam already
+shipped **SIA**, a multilingual WhatsApp voice assistant recommending NSQF courses, in May 2025.
+Where they are the right answer, hand off. A system that knows when to hand off is more
+credible than one that pretends to be alone in the field.
+
+## 2026-09-25 — opportunity data is two or three sourced districts, not a national map
+
+Every row carries `source` and `source_date`. The architecture is pluggable for NCS/e-Shram.
+A fabricated national feed loses to three honest districts the moment a jury member turns out
+to be from one of them.
+
+## 2026-09-25 — success is measured by spread, not just relevance
+
+CAG found 40% of national certifications in 10 job-roles and 90% of "Green Jobs" in one. Run
+the recommender over a synthetic district cohort and plot the trade distribution. If it
+concentrates like PMKVY did, we have automated the failure with better UX.

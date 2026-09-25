@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>SIH26097 — Calling & WhatsApp Channels</title>
+<style>
+  @page { size: A4; margin: 13mm 14mm 12mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Source Sans 3","Segoe UI",Helvetica,Arial,sans-serif; font-size: 9.1pt; line-height: 1.38; color: #1a1a1a; margin:0; }
+  h1 { font-size: 19pt; margin: 0 0 2px; letter-spacing: -0.4px; }
+  .sub { color:#666; font-size: 9pt; margin-bottom: 14px; }
+  h2 { font-size: 11pt; margin: 13px 0 5px; page-break-after: avoid; padding-bottom: 3px; border-bottom: 2px solid #1a1a1a; }
+  h3 { font-size: 10pt; margin: 11px 0 3px; }
+  p { margin: 0 0 6px; }
+  table { page-break-inside: avoid; border-collapse: collapse; width: 100%; margin: 6px 0 9px; font-size: 8.1pt; }
+  th { background: #1a1a1a; color: #fff; text-align: left; padding: 4px 6px; font-weight: 600; }
+  td { border-bottom: 1px solid #ddd; padding: 4px 6px; vertical-align: top; }
+  tr.hl td { background: #fff8e1; }
+  td.n { text-align: right; white-space: nowrap; }
+  .box { border-left: 3px solid #1a1a1a; background:#f5f5f5; padding: 7px 10px; margin: 8px 0; }
+  .warn { border-left: 3px solid #c62828; background:#fdecea; padding: 7px 10px; margin: 8px 0; }
+  .win { border-left: 3px solid #2e7d32; background:#edf7ed; padding: 7px 10px; margin: 8px 0; }
+  ul, ol { margin: 4px 0 7px; padding-left: 17px; }
+  li { margin-bottom: 2px; }
+  .tag { display:inline-block; font-size:7.5pt; padding:1px 5px; border-radius:3px; font-weight:600; }
+  .real { background:#2e7d32; color:#fff; } .fake { background:#c62828; color:#fff; } .part { background:#ef6c00; color:#fff; }
+  .flow { font-family: ui-monospace,"Cascadia Mono",Consolas,monospace; font-size:8pt; background:#f5f5f5; padding:7px 9px; margin:5px 0 8px; line-height:1.5; border:1px solid #e0e0e0; white-space: pre; }
+  .foot { margin-top:14px; padding-top:7px; border-top:1px solid #ccc; color:#777; font-size:7.8pt; }
+  .pb { page-break-before: always; }
+  strong { font-weight: 650; }
+</style></head><body>
+
+<h1>Phone Calls &amp; WhatsApp Voice Notes</h1>
+<div class="sub">SIH26097 · How the channels work, what they cost, and what we do differently · 25 Sept 2026</div>
+
+<p>The problem statement asks for three ways in: <strong>a phone call for people with basic phones</strong>,
+<strong>WhatsApp voice notes</strong>, and <strong>a simple app or kiosk</strong>. This note covers the
+first two — the ones that need an outside company and cost money per use.</p>
+
+<h2>1 · How a phone call actually works</h2>
+
+<p>You rent a phone number from an Indian telecom company. When someone calls it, the company
+doesn't play a recording — it opens a live pipe to our server and streams the caller's voice
+across as they speak. We send audio back down the same pipe. The caller just hears a conversation.</p>
+
+<div class="flow">Beneficiary dials a toll-free number on a ₹800 keypad phone
+   ↓  telecom company streams their voice to us, live
+   ↓  we turn speech into text · work out what they said · pick the reply
+   ↓  we send audio back down the same line
+   ↓  they hear an answer — about 1.5 seconds later</div>
+
+<p>Two Indian companies matter here. <strong>Exotel</strong> is our choice;
+it bills in rupees, its numbers are cleared with Indian telecom regulators, and the audio stays
+inside India. <strong>Twilio</strong> is American, costs more, and routes audio abroad — which is
+awkward when the caller is a government scheme beneficiary.</p>
+
+<div class="box"><strong>Why it matters that it's a phone call, not an app:</strong> it uses the
+voice network, not mobile data. It works on a phone with no internet, no screen worth reading, and
+no app store. That is most of the people this scheme is for.</div>
+
+<h2>2 · How WhatsApp voice notes actually work</h2>
+
+<p>Someone records a voice note and sends it to our number. WhatsApp tells our server a message
+arrived; we fetch the audio file, listen to it, and send a reply. The reply can be text or,
+if done properly, <strong>another voice note</strong> — which matters, because someone who cannot
+read a form usually cannot read our answer either.</p>
+
+<div class="flow">Beneficiary holds the mic button and speaks
+   ↓  WhatsApp tells our server a voice note arrived
+   ↓  we download it · turn it into text · work out the reply
+   ↓  we send back a voice note they can just listen to</div>
+
+<p>There are two ways to connect. Going <strong>direct to Meta</strong> is cheaper and lets you send
+voice replies. Going <strong>through Twilio</strong> is quicker to set up
+but adds a markup on every message and makes voice replies harder, which pushes you towards
+text-only replies.</p>
+
+<div class="warn"><strong>Deadline — 1 October 2026, six days away.</strong> Right now, replying to
+someone who messaged you first is free. From 1 October, Meta charges for those replies after the
+first <strong>1,000 per month</strong>. Worse: <strong>any account without a payment method saved by
+30 September stops being able to send these replies at all.</strong></div>
+
+
+
+<h2>3 · Which one is better</h2>
+
+<table>
+<tr><th style="width:30%"></th><th style="width:23%">Phone call (Exotel)</th><th style="width:23%">WhatsApp voice notes</th><th>Offline kiosk / app</th></tr>
+<tr><td>Reaches a basic keypad phone</td><td><strong>Yes</strong></td><td>No</td><td>No</td></tr>
+<tr><td>Needs mobile internet</td><td><strong>No</strong></td><td>Yes</td><td><strong>No</strong></td></tr>
+<tr><td>Works on a shared family phone</td><td><strong>Yes</strong> — we can call back</td><td>Poorly — messages sit in someone else's chat</td><td>Yes</td></tr>
+<tr><td>Feels like a conversation</td><td><strong>Yes</strong></td><td>No — send, wait, reply</td><td>Yes</td></tr>
+<tr><td>Can pause and come back later</td><td>Only if built for it</td><td><strong>Yes, naturally</strong></td><td>Yes</td></tr>
+<tr><td>Leaves proof for the file</td><td>Yes</td><td><strong>Yes — the chat is the record</strong></td><td>Yes</td></tr>
+<tr><td>Cost per person</td><td>Middle</td><td>Low</td><td><strong>Nearly zero</strong></td></tr>
+<tr><td>Set-up difficulty</td><td>Hardest</td><td>Medium</td><td>Easy</td></tr>
+</table>
+
+<p><strong>Verdict: they are not competing, they are for different people.</strong> The phone call is
+the only one that reaches the poorest beneficiary and the only one that reaches a woman on a shared
+handset. WhatsApp is cheapest and leaves a natural paper trail. The offline kiosk costs nothing to
+run and is the only thing that works when the network is down. We need all three, running off one
+shared brain — not three separate products.</p>
+
+<h2>4 · What it costs</h2>
+
+<p>Worked on <strong>1,000 beneficiaries, a four-minute interview each</strong>. Vendor rates are
+current published figures and should be re-checked before any number goes in front of a judge.</p>
+
+<table>
+<tr><th style="width:34%">Route</th><th style="width:22%">Per person</th><th style="width:22%">Per 1,000</th><th>What drives the cost</th></tr>
+<tr><td><strong>Phone call</strong> — Exotel + paid speech, live voice replies</td><td class="n">≈ ₹7.85</td><td class="n">≈ ₹7,850</td><td>Call minutes (₹0.80–1.00/min) plus speech charges</td></tr>
+<tr class="hl"><td><strong>Phone call</strong> — Exotel + <strong>pre-recorded questions</strong></td><td class="n">≈ ₹5.60</td><td class="n">≈ ₹5,600</td><td>Recording the questions once removes most of the speech bill</td></tr>
+<tr><td><strong>WhatsApp</strong> — direct to Meta, <em>today</em></td><td class="n">≈ ₹2.00</td><td class="n">≈ ₹2,000</td><td>Replies still free; only speech costs money</td></tr>
+<tr><td><strong>WhatsApp</strong> — direct to Meta, <strong>after 1 Oct</strong></td><td class="n">≈ ₹3.10</td><td class="n">≈ ₹3,080</td><td>≈10 replies each; first 1,000 a month free, then ≈₹0.12 each</td></tr>
+<tr><td><strong>WhatsApp via Twilio</strong></td><td class="n">higher</td><td class="n">higher</td><td>Same as above plus Twilio's cut on every message</td></tr>
+<tr class="hl"><td><strong>Offline kiosk</strong> — our own speech software</td><td class="n">≈ ₹0</td><td class="n">≈ ₹0</td><td>No call, no data, no vendor. Cost is the device, once</td></tr>
+</table>
+
+<div class="box">
+<strong>Three things that fall straight out of this table.</strong>
+<ol style="margin-bottom:0">
+<li><strong>Recording the questions once saves about 29% of every call.</strong> The questions never
+change — there is no reason to pay a computer to re-read them 1,000 times. It is also faster, which
+is what stops a caller hanging up.</li>
+<li><strong>Twilio is the expensive choice on both channels.</strong>
+Exotel and going direct to Meta are cheaper and keep the data in India.</li>
+<li><strong>The offline route is free per use.</strong> For a scheme with a fixed budget and a
+hard administrative spending cap, that is not a small detail.</li>
+</ol>
+</div>
+
+<h2>5 · What we do differently</h2>
+
+<div class="win"><strong>One brain, four doors.</strong> We build the interview once, then plug the phone line,
+WhatsApp, the kiosk and the field-worker's phone into it. Adding a channel becomes a week, not a
+rewrite — and the questions can never drift apart between channels.</div>
+
+<ol>
+<li><strong>Reply by voice on WhatsApp, not by text.</strong> If the
+person could read our answer, they could have filled in the form.</li>
+
+<li><strong>Record the questions once, in a real human voice.</strong> Cheaper, roughly a second
+faster per turn, works with the network off — and someone can actually listen to all forty prompts
+and fix the ones that sound cold. The problem statement asks for "empathetic, not administrative";
+that is achieved by ear, not by software.</li>
+
+<li><strong>Survive a dropped call.</strong> Rural calls drop constantly. We save each answer as it
+is confirmed, so calling back resumes where it stopped instead of starting the interview again.</li>
+
+<li><strong>Say so when we cannot hear them.</strong> Speech software gets roughly one word in four
+wrong on a village phone line — and that is the <em>best</em> available; Google's gets three in
+five wrong. Rather than trust whatever text comes back, we check our own
+confidence and simply ask again, which is what a considerate human interviewer does anyway.</li>
+
+<li><strong>A third door: works with no internet at all.</strong> Our own speech software
+on a cheap phone at the panchayat office. Costs nothing per interview and can be demonstrated with
+the phone in aeroplane mode.</li>
+
+<li><strong>A fourth door reality demands: the field worker's phone.</strong> Half of rural women
+over 15 own no phone, and the scheme requires at least 30% women in every training batch. Without
+a mode the ASHA or Anganwadi worker can use on the doorstep, that target cannot be met.</li>
+
+<li><strong>Not built on a price that expires next week.</strong> Our costing assumes WhatsApp
+replies are paid, because from 1 October they are. Our cheapest channel is the one with no vendor
+in it at all.</li>
+
+<li><strong>A phone number people ring, not one that rings them.</strong> An incoming toll-free
+line sidesteps the regulatory questions around automated outbound calling, and it puts the
+beneficiary in control of when the conversation happens — which on a shared handset is the whole
+game.</li>
+</ol>
+
+<div class="foot">
+Sources: Exotel and Twilio published India rates; Meta WhatsApp Business pricing including the 1 Oct 2026
+change; Sarvam published API rates; AI4Bharat speech accuracy benchmark (Vistaar).
+Vendor prices move — re-check before publishing any figure.
+</div>
+
+</body></html>

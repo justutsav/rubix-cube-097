@@ -1,0 +1,48 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+
+# Every .env variant. Same rule Rubix-Cube-90 learned the hard way: a real credential
+# sat in a file called `.env.bak-s3` that was untracked but NOT ignored. Match the
+# family, not the filenames somebody happened to think of.
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.next/
+dist/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Dev databases. A working one holds submitted source documents — which for this PS
+# may be threat intel somebody pasted in. Never commit one.
+*.db
+*.sqlite
+*.sqlite3
+
+# Model weights. We self-host; the weights are not source.
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.onnx
+
+# Uploaded source content and everything rendered from it. Both are user material,
+# both regenerate. Commit the manifest, not the corpus — see samples/README.md.
+ai/.storage/
+ai/.cache/
+samples/raw/*
+!samples/raw/.gitkeep
+research/data/
+
+# /graphify's output — a content-addressed LLM cache keyed on chunk hashes. It
+# regenerates from source and goes stale the moment anyone commits.
+graphify-out/
+
+# Editor/agent scratch.
+.claude/
+.vercel/
