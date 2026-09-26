@@ -51,6 +51,8 @@ wss://<random-words>.trycloudflare.com/stream?token=<STREAM_TOKEN>
 ```
 
 The address changes every time cloudflared restarts; update Exotel when it does.
+Give it a minute after start (new names take time to reach DNS) and keep the default
+protocol (QUIC): `--protocol http2` gave HTTP 530 in our test.
 Check it: `https://<random-words>.trycloudflare.com/health` should show `{"ok":true,...}`.
 
 ## 3. Test A — call the ExoPhone, talk to the bot (simplest)
@@ -108,3 +110,5 @@ did it complete, silence p50/p95, anything that sounded wrong (clipped prompts, 
 | Callback API returns 401/403 | Wrong key/token/SID or API host | Check `EXOTEL_SUBDOMAIN` (`api.in.exotel.com` vs `api.exotel.com`) |
 | Callback API: number not allowed | Trial: unverified number | Verify it in the dashboard |
 | Tunnel URL stopped working | cloudflared restarted | New URL → update Exotel app / `EXOTEL_STREAM_URL` |
+| `/health` via tunnel slow or resets in the first minutes | New quick tunnel still settling | Wait a minute; if it persists, restart cloudflared |
+| HTTP 530 from the tunnel URL | Edge can't reach the tunnel (seen with `--protocol http2`) | Use the default protocol |

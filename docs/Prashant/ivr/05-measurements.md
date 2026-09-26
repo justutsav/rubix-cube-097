@@ -118,3 +118,19 @@ apology, progress is saved). Cloud speech-to-text moves that load off the box.
 | opened | 170 | 28 ms | 51 ms | 28 ms | 51 ms | 67 ms |
 
 Calls: 1 · turns: 1822 · 'hmm' filler played: 337 · barge-ins: 0 · engine failures: 130
+
+## Public tunnel (Cloudflare quick tunnel, no account)
+
+### 2026-09-26, fake Exotel over the internet: laptop → Cloudflare edge → tunnel → adapter
+
+| Check | Result |
+|---|---|
+| `GET /health` through the tunnel (QUIC, after DNS settled) | 6/6 OK, 0.2–0.9 s |
+| Wrong `?token=` | rejected, HTTP 403, logged |
+| Full interview (2 spoken answers + keys) | completed, 17 turns, result spoken |
+| Silence after a spoken answer | p50 609 ms (local was ~330 ms: the tunnel adds ~280 ms round trip) |
+
+Flakiness seen, all on the tunnel side, none in our code: the first minutes after start saw
+0.5–12 s responses and resets; `--protocol http2` gave HTTP 530 (edge could not reach the
+tunnel) — stay on the default QUIC; one call early on dropped at ~30 s. A quick tunnel is fine
+for the first Exotel test; for demos use a named tunnel or ngrok's free static domain.
