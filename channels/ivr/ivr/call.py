@@ -64,7 +64,9 @@ class Call:
         self.finished = False          # goodbye heard: hang up
         self.no_input_frames = _ms("NO_INPUT_TIMEOUT_MS", 6000) // 20
         self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 400)   # 120 cut every prompt on a real line (echo/noise)
-        self.filler_after = _ms("FILLER_AFTER_MS", 700) / 1000
+        self.filler_after = _ms("FILLER_AFTER_MS", 1000) / 1000   # Sarvam often takes 0.7-0.8 s
+        # the carrier's own announcement ("this call is being recorded") must not cut the welcome
+        self.barge_grace_frames = _ms("BARGE_IN_GRACE_MS", 4000) // 20
         self.max_frames = _ms("MAX_CALL_SECONDS", 600) * 50
 
     # --- events from Exotel ---------------------------------------------------
@@ -101,7 +103,7 @@ class Call:
 
         pcm = self.vad.feed(frame)
         if self.speaking:
-            if self.vad.speech_ms >= self.barge_in_ms:
+            if self.vad.speech_ms >= self.barge_in_ms and self.frames > self.barge_grace_frames:
                 await self._barge_in()
             return                     # an utterance that ends mid-prompt is too short to count
 

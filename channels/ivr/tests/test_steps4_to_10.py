@@ -74,6 +74,18 @@ def test_talking_over_a_prompt_stops_it_and_counts_as_the_answer(eng):
     assert eng.seen[:2] == ["opened", "audio"]
 
 
+def test_no_barge_in_during_the_first_seconds(eng, monkeypatch):
+    """Exotel's own 'this call is being recorded' must not cut our welcome."""
+    monkeypatch.setenv("BARGE_IN_GRACE_MS", "4000")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        line.audio(frames(SPEECH[:12800]))            # 0.8 s of "speech" right at the start
+        audio, _ = line.hear()                        # prompt plays to its end: no clear
+        assert voice(audio) == clip(1, ms=2000)
+    assert eng.seen == ["opened"] or eng.seen == ["opened", "hangup"]
+
+
 def test_key_press_during_a_prompt_stops_it(eng):
     with TestClient(server.app).websocket_connect("/stream") as ws:
         line = Line(ws)

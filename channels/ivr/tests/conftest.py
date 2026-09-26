@@ -90,6 +90,7 @@ def _no_local_env(monkeypatch):
     """Tests must not depend on a developer's channels/ivr/.env (e.g. a live STREAM_TOKEN)."""
     for k in ("STREAM_TOKEN", "MISSED_CALL_SECRET"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BARGE_IN_GRACE_MS", "0")      # tests interrupt the very first prompt
 
 
 @pytest.fixture

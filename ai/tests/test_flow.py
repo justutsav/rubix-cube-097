@@ -170,3 +170,11 @@ def test_extract_endpoint_for_measurement(client):
     r = client.post("/v1/extract", json={"field": "yes_no", "utterance": {"kind": "text", "value": "नहीं"}})
     assert r.json()["value"] == "no"
     assert client.post("/v1/extract", json={"field": "q9", "utterance": {"kind": "text", "value": "x"}}).status_code == 422
+
+
+def test_yes_to_any_difficulty_opens_the_menu(caller):
+    c = caller
+    consent_and_pin(c)
+    for d in ["1", "3", "1", "5", "1", "4"]:
+        c.key(d)
+    assert c.ids(c.say("हाँ।")) == ["q5_menu"]

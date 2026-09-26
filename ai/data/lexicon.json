@@ -1,5 +1,5 @@
 {
- "version": "2026-09-26.4",
+ "version": "2026-09-26.5",
  "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
@@ -901,7 +901,13 @@
    "जा नहीं सकती",
    "जा नहीं सकता",
    "दूर ना जा सकीले",
-   "दूर ना जा सकेनी"
+   "दूर ना जा सकेनी",
+   "आने जाने में दिक्कत",
+   "आने जाने में परेशानी",
+   "आने-जाने में दिक्कत",
+   "आने जाने में",
+   "आना जाना मुश्किल",
+   "जाने में दिक्कत"
   ],
   "physical": [
    "विकलांग",

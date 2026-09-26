@@ -39,6 +39,7 @@ from engine import extract as x
     ("education", "मैंने बैचलर्स तक पढ़ाई की है।", {"class": 15}),
     ("years", "5 साल।", 5),
     ("trade", "खेती।", "FARMING"),
+    ("mobility", "आने जाने में दिक्कत है।", "distance"),
 ])
 def test_extracts(fn, text, want):
     got = getattr(x, fn)([text])

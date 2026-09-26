@@ -280,6 +280,8 @@ class Flow:
         got = spec["extract"](inp.nbest) if inp.nbest else None
         if got is None and inp.nbest:
             got = llm.classify(field, inp.nbest)
+        if got is None and field == "q5" and inp.nbest and (extract.yes_no(inp.nbest) or ("",))[0] == "yes":
+            return self._menu()                    # "हाँ, दिक्कत है" — which one? the menu asks
         if got:
             value, conf, method = got
             cand = {"value": _normalise(field, value, inp.nbest), "conf": conf, "method": method}

@@ -134,3 +134,23 @@ Flakiness seen, all on the tunnel side, none in our code: the first minutes afte
 0.5–12 s responses and resets; `--protocol http2` gave HTTP 530 (edge could not reach the
 tunnel) — stay on the default QUIC; one call early on dropped at ~30 s. A quick tunnel is fine
 for the first Exotel test; for demos use a named tunnel or ngrok's free static domain.
+
+## Real calls through Exotel (trial account, ExoPhone 080…, Cloudflare quick tunnel, Sarvam)
+
+### 2026-09-26, first real calls from a mobile
+
+| Call | What happened | Cause | Fixed in |
+|---|---|---|---|
+| 1 | Silence | Exotel strips `?token=` from the Voicebot URL and sends it as `start.custom_parameters`; every connection was rejected | `8c37682` |
+| 2 | Prompts cut to fragments ("hum hum"), answers not understood | Barge-in at 120 ms fired on line noise/echo on 22 of 23 turns | `85d8d42` (400 ms) |
+| 3 | 27 turns, reached the last question; short answers failed | Sarvam ends every transcript with "।", which the matcher kept, so `गया।` ≠ `गया`; "bachelors" unknown; my engine restart ended the call on the last key | `85d8d42` + this commit |
+
+Call 3, per turn: engine 400–840 ms after a spoken answer (Sarvam + understanding), 2–11 ms
+after a key. Exotel's format: `{'encoding': 'base64', 'sample_rate': '8000'}`. Sarvam heard every
+answer correctly; every miss was in our matching.
+
+Replaying call 3's saved clips through the fixed engine: 9 of 10 real answers understood
+(`गया।`, `बैचलर्स`, `खेती।`, `5 साल।`, `ट्रैक्टर`, `नौकरी`, `हाँ।` …); the miss, "आने जाने में
+दिक्कत है", is fixed in this commit, as are: a plain "हाँ" to the difficulty question opening
+the menu, no barge-in in the first 4 s (Exotel's "this call is being recorded" cut the
+welcome), and the "hmm" filler only after 1 s (Sarvam often takes 0.7–0.8 s).
