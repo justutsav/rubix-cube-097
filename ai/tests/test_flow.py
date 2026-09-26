@@ -1,4 +1,5 @@
 from conftest import Caller
+from engine import flow
 from engine.server import STORE
 
 
@@ -197,7 +198,8 @@ def test_plain_no_to_any_difficulty_is_accepted_without_readback(caller):
     consent(c)
     for d in ["1", "3", "1", "5", "1", "4"]:
         c.key(d)
-    assert c.ids(c.say("नहीं।"))[:2] == ["ack", "q6"]
+    ids = c.ids(c.say("नहीं।"))
+    assert ids[0] in flow.ACKS and ids[1] == "q6"                    # accepted, no read-back
 
 
 def test_spoken_menu_digit_counts_as_yes(client):
@@ -232,3 +234,14 @@ def test_menu_number_said_aloud_counts_as_the_key(caller):
     assert c.ids(c.say("नौ।"))[:2] == ["ack", "q1"]              # 9 = other district
     b = STORE.q("select district from beneficiary where phone_hash=?", c.phone).fetchone()
     assert b[0] == "OTHER"
+
+
+def test_warm_replies_and_progress_cues(caller):
+    c = caller
+    consent(c)
+    c.key("1")                                                       # q0
+    assert c.ids(c.key("1"))[0] == "emp_no_school"                   # key 1 = never studied
+    c.key("1")                                                       # q2 tailoring
+    assert c.ids(c.key("5"))[0] == "emp_experience"                  # 10+ years
+    ids = c.ids(c.key("1"))                                          # q3 -> q4
+    assert ids[-2:] == ["progress_half", "q4"]

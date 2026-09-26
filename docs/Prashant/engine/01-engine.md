@@ -100,9 +100,18 @@ sentence end, never name a course; at most 2 side questions per question.
 answers; tests never call it. If Sarvam is slow or down the call simply carries on with
 re-ask and the keypad.
 
-**Voice:** every fixed prompt is recorded once in Sarvam `bulbul:v3` at natural speed
-(`SARVAM_TTS_PACE=1.0`; 1.2× felt too fast on a real call). "आपने कहाँ तक पढ़ाई की है?" takes
-1.4 s (the Google placeholder took 2.0 s).
+**Voice:** Piper (free, offline, runs on the laptop CPU, ~40x faster than real time),
+Hindi voice `priyamvada` (female, matching the prompts' feminine grammar) at
+`PIPER_LENGTH_SCALE=0.85`. All 168 prompts re-record in ~7 s at no cost; live replies (result,
+AI answers) are made on the machine in ~0.2 s. Sarvam Bulbul stays available
+(`TTS_PROVIDER=sarvam`) for a demo where quality matters most. **Licence:** the `priyamvada`
+and `pratham` voices are trained on CC BY-NC-SA 4.0 data (non-commercial), `rohan` on the IIT
+Madras IndicTTS licence — fine for the hackathon; confirm before any paid deployment.
+
+**Tone:** thanks rotate ("ठीक है", "जी, समझ गई", "धन्यवाद", "अच्छा"); answers that call for it
+get a warm, true line (no schooling → "many courses need none"; 5+ years → "that experience will
+help"; no work / a difficulty → supportive); progress cues before q4 and q7; a gentler second
+re-ask.
 
 **Speakerphone:** the caller's audio can carry our own prompt back. The adapter only lets
 speech interrupt a prompt if it is clearly louder than that echo, and ignores the first 250 ms

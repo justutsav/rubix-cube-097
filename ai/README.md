@@ -8,8 +8,13 @@ Works the same on Linux, Windows and macOS. Needs only [uv](https://docs.astral.
 
 ## Run
 
+One-time: the free local voice (~60 MB, no account):
+
 ```bash
-uv run --extra tts uvicorn engine.server:app --port 8001
+uv run python tools/get_piper_voice.py
+```
+```bash
+uv run --extra tts --extra piper uvicorn engine.server:app --port 8001
 ```
 
 With free offline speech-to-text (no account, ~80 MB model, one-time download):
@@ -54,7 +59,8 @@ Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 | `ASR_TIMEOUT_MS` | `2000` | Sarvam slower than this → fall back |
 | `SARVAM_API_KEY` | — | put it in `ai/.env` (gitignored); read at start-up |
 | `SARVAM_STT_MODEL` | `saarika:v2.5` | |
-| `TTS_PROVIDER` | `gtts` | `gtts` = dev voice · `sarvam` = Bulbul, falls back to gtts |
+| `TTS_PROVIDER` | `piper` | `piper` = free, offline, local (default) · `sarvam` = Bulbul (paid) · `gtts` = dev |
+| `PIPER_VOICE` / `PIPER_LENGTH_SCALE` | `hi_IN-priyamvada-medium` / `0.85` | voice from `tools/get_piper_voice.py`; lower = faster |
 | `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` | `bulbul:v3` / Sarvam default | |
 | `LLM_PROVIDER` | `sarvam` if `SARVAM_API_KEY` is set, else `none` | AI helper for off-script answers and side questions |
 | `SARVAM_LLM_MODEL` | `sarvam-105b-conversations` | JSON mode, fast |

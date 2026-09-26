@@ -54,9 +54,8 @@ uv run --extra dev pytest -q
 
 ## Prompts
 
-`prompts/hi/*.wav` are recorded in the engine's voice (Sarvam Bulbul v3 at 1.2×). The wording
-lives in `ai/engine/prompts.py`; after changing it, run the engine with `TTS_PROVIDER=sarvam`
-and re-render (only changed prompts are redone; `--voice gtts` for the free placeholder voice):
+`prompts/hi/*.wav` are recorded in the engine's voice (Piper, free and local, by default). The wording
+lives in `ai/engine/prompts.py`; after changing it, run the engine and re-render (only changed prompts are redone; `--voice gtts` for the free placeholder voice):
 
 ```bash
 uv run --extra prompts python tools/make_prompts.py --engine http://localhost:8011

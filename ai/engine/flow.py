@@ -34,6 +34,8 @@ LANG_DTMF = {str(i + 1): lang for i, lang in enumerate(LANGS)}
 HELP_KEY = "#"          # any time: ask for a person to call back (0 and 9 are menu choices)
 AI_PER_CALL = int(os.environ.get("LLM_MAX_PER_CALL", 6))     # cost cap: then menus/keypad only
 MAX_ASIDES = 2          # side questions per question before we steer to the menu
+PROGRESS = {"q4": "progress_half", "q7": "progress_last"}
+ACKS = ["ack", "ack_got_it", "ack_thanks", "ack_good"]      # rotate, so it does not sound like a machine
 YES_NO_STATES = {"CONSENT": "consent", "RESUME": "resume_offer", "READBACK": "readback_confirm",
                  "GUARDIAN": "q5_guardian"}
 
@@ -325,6 +327,8 @@ class Flow:
 
     def _ask(self, field, editing=False):
         self._go("FIELD", field=field, mode="ask", tries=0, silence=0, cand=None, editing=editing)
+        if not editing and field in PROGRESS:
+            self.say.append(PROGRESS[field])               # "आधे सवाल हो गए…" / "बस आख़िरी सवाल"
         self.say.append(field)
         self.expect = {"kind": "free", "dtmf_map": _field(field)["dtmf"], "timeout_ms": TIMEOUT_MS}
 
@@ -396,7 +400,7 @@ class Flow:
         if st["tries"] >= MAX_ASK + MAX_MENU:
             return self._defer()
         if st["tries"] >= MAX_ASK or st["mode"] == "menu":
-            return self._menu(["reask"])
+            return self._menu(["reask_gentle"])
         self.say = ["reask", field]
 
     def _confirm(self, cand):
@@ -430,7 +434,7 @@ class Flow:
         if st["tries"] >= MAX_ASK + MAX_MENU:
             return self._defer()
         if st["tries"] >= MAX_ASK:
-            return self._menu(["reask"])
+            return self._menu(["reask_gentle"])
         self.say = ["reask", field]
         self.expect = {"kind": "free", "dtmf_map": spec["dtmf"], "timeout_ms": TIMEOUT_MS}
 
@@ -441,13 +445,26 @@ class Flow:
             self.st.set_beneficiary(self.bid, district=value)
         if field == "q2" and value in ("NONE", "OTHER"):
             self.st.put_answer(self.bid, "q2_years", 0, 1.0, "IMPLIED", self.s["id"])
-        self.say.append("ack")
+        self.say.append(self._after_answer(field, value))
         if field == "q5" and value == "cognitive":
             self._go("GUARDIAN", tries=0, editing=self.state.get("editing"))
             self.say.append("q5_guardian")
             self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
             return
         self._advance(field)
+
+    def _after_answer(self, field, value):
+        """What a person would say back: a varied thanks, or a warm line where the answer calls
+        for one. Only true statements (NSQF levels 1-2 need no schooling; experience counts)."""
+        if field == "q1" and isinstance(value, dict) and not value.get("class") and not value.get("literate"):
+            return "emp_no_school"
+        if field == "q2_years" and isinstance(value, int) and value >= 5:
+            return "emp_experience"
+        if field == "q3" and isinstance(value, dict) and value.get("concept") in ("NONE", "LABOUR"):
+            return "emp_no_work"
+        if field == "q5" and value in ("distance", "physical", "care_duty", "cognitive"):
+            return "emp_difficulty"
+        return ACKS[FIELDS.index(field) % len(ACKS)]
 
     def _defer(self):
         field = self.state["field"]

@@ -129,3 +129,11 @@ told a caller the course costs money; with the fact sheet it defers fees and sti
 district worker. Cost cap: 6 AI calls per phone call, none for one-word answers. Prompts are
 recorded once in Sarvam's voice at 1.2×; only the result and AI replies use live voice.
 
+## 2026-09-26 — voice: Piper on the machine, not a paid cloud voice
+
+Sarvam Bulbul cost too much for our free tier. Piper (open source, CPU, offline) makes speech
+~40x faster than real time on a laptop, so prompts and live replies cost nothing and arrive
+sooner. Voice `hi_IN-priyamvada-medium`. Its training data is CC BY-NC-SA 4.0: acceptable for
+the hackathon and a government pilot, **to be confirmed before any paid deployment**. Sarvam
+remains a switch (`TTS_PROVIDER=sarvam`).
+

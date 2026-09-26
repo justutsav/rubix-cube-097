@@ -28,6 +28,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 app = FastAPI(title="PS 26097 interview engine")
 STORE = Store()
 asr.warm_up()                                  # models and connections ready before the first caller
+tts.warm_up()
 MAX_AUDIO_B64 = 700_000        # ~20 s of 8 kHz 16-bit audio; longer is not an answer
 
 
