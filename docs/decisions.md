@@ -146,3 +146,12 @@ Injection and abuse are filtered before the AI; abuse twice ends the call; per-c
 and daily caps bound cost. Guardrail events are logged as counts, never words. No promises of
 money or jobs are ever made (fact A12). Details and tests: `docs/Prashant/ivr/07-guardrails.md`.
 
+## 2026-09-27 — conversation: problems are heard, the caller can go back, the engine reasons
+
+PS 26097 asks for an interview that is "empathetic and conversational rather than administrative"
+and for skill gaps, pathways and local opportunities, not just a course list. So: a problem the
+caller shares is acknowledged (our own line per topic), noted as a topic for the district worker
+and remembered for the question it answers; the caller can go back by words or the star key; the
+engine links answers out loud and explains its result with rules (`ai/engine/reasoning.py`), not
+a model, so every sentence traces to an answer. The speech policy is unchanged: the AI only picks
+topic and question ids. Details: `docs/Prashant/engine/01-engine.md` §3 and §5.

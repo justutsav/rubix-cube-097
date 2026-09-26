@@ -11,13 +11,22 @@ Keypad answers need no confirmation: they are exact. Speech is always read back.
 The AI helper (llm.py) runs only when the word list finds nothing: it may pick an allowed
 value (still read back), answer a side question from the fact sheet, or spot "repeat" /
 "I want a person". Capped per call (LLM_MAX_PER_CALL) to keep cost down.
+
+Conversation, not a form:
+  - a problem the caller shares ("पैसे की तंगी है", "बीमार रहता हूँ") is never skipped: our own
+    empathy line, the topic noted for the district worker, then the same question. Travel, health
+    and family problems are remembered and offered as the answer when q5 comes ("आपने पहले बताया था…").
+  - "पिछला सवाल" / star key / "मेरी पढ़ाई वाला जवाब बदलना है" goes back to that question; after it,
+    the interview carries on where it was.
+  - answers are reasoned about as they come ("यानी आप परिवार का हुनर ही आगे बढ़ा रहे हैं"), and the
+    result says why (reasoning.py: pathway, skill gaps, local fit, constraints — PS 26097 R4).
 """
 
 import os
 import re
 from dataclasses import dataclass
 
-from . import extract, llm, places, prompts, recommend
+from . import extract, llm, places, prompts, reasoning, recommend
 from .districts import load as districts
 from .extract import lexicon
 from .prompts import YEARS_DTMF
@@ -33,14 +42,18 @@ TIMEOUT_MS = 6000
 LANGS = os.environ.get("ENGINE_LANGS", "hi").split(",")      # e.g. "hi,bho": asks at the start
 LANG_DTMF = {str(i + 1): lang for i, lang in enumerate(LANGS)}
 HELP_KEY = "#"          # any time: ask for a person to call back (0 and 9 are menu choices)
+BACK_KEY = "*"          # any time in the questions: the previous question again
+BACK_STATES = ("FIELD", "READBACK")
 AI_PER_CALL = int(os.environ.get("LLM_MAX_PER_CALL", 6))     # cost cap: then menus/keypad only
 MAX_ASIDES = 2          # side questions per question before we steer to the menu
 MAX_ASIDES_PER_CALL = int(os.environ.get("MAX_ASIDES_PER_CALL", 4))
 MAX_CALLS_PER_DAY = int(os.environ.get("MAX_CALLS_PER_DAY", 5))       # per phone number
 AI_PER_DAY = int(os.environ.get("LLM_DAILY_BUDGET", 500))             # all callers together
-KEEP = ("lang", "taught", "ai_used", "asides_total", "abuse")        # survive every step of a call
+KEEP = ("lang", "taught", "ai_used", "asides_total", "abuse", "problems", "hints")        # survive every step of a call
 PROGRESS = {"q4": "progress_half", "q7": "progress_last"}
 ACKS = ["ack", "ack_got_it", "ack_thanks", "ack_good"]      # rotate, so it does not sound like a machine
+Q5_HINT = {"health": "physical", "travel": "distance", "family": "care_duty"}   # a problem that answers q5
+CALLBACK_PROBLEMS = ("discrimination",)            # serious enough that a person calls back unasked
 YES_NO_STATES = {"CONSENT": "consent", "RESUME": "resume_offer", "READBACK": "readback_confirm",
                  "GUARDIAN": "q5_guardian"}
 
@@ -206,6 +219,12 @@ class Flow:
             self._abuse()                          # guardrail: before anything else, no AI
         elif spoken and extract.looks_like_injection(inp.nbest):
             self._off_topic("injection")           # "ignore your instructions…": never reaches the AI
+        elif at in BACK_STATES and ((spoken and extract.wants_go_back(inp.nbest)) or
+                                    (inp.kind == "dtmf" and BACK_KEY in inp.digits)):
+            self._go_back("prev")                  # "पिछला सवाल", star key
+        elif at in BACK_STATES and spoken and extract.wants_change(inp.nbest):
+            ai = self._ai(inp, self.state.get("field") or "readback_confirm", {})   # which question?
+            self._go_back(ai["goto"] if ai and ai.get("goto") else "prev")
         elif inp.kind == "opened" and at != "NEW":
             self._repeat()                         # channel reconnected: say the current prompt again
         elif (inp.kind in ("audio", "text") and inp.nbest and at not in ("NEW", "DONE", "CLOSED")
@@ -217,6 +236,12 @@ class Flow:
             if self._yes_no_state() and inp.kind in ("audio", "text") and inp.nbest and not self._yes_no(inp):
                 if self._is_echo(inp):
                     return self._listen_again()
+                topic = extract.problem(inp.nbest)
+                if topic:                                  # "मेरे पास पैसे नहीं हैं" to "shall we start?"
+                    self._problem(topic)
+                    self.say.append("back_to_q")
+                    self._repeat()
+                    return self._reply()
                 handled, inp = self._ai_yes_no(inp)
                 if handled:
                     return self._reply()
@@ -276,6 +301,14 @@ class Flow:
             self.say = [f"fact-{ai['fact']}"]              # our own pre-recorded sentence, never AI text
             self._repeat()                                 # answer, then the same question again
             return True
+        if ai["intent"] == "problem":
+            self._problem(ai["problem"])
+            self.say.append("back_to_q")
+            self._repeat()
+            return True
+        if ai["intent"] == "goto":
+            self._go_back(ai["goto"])
+            return True
         if ai["intent"] == "help":
             self._help()
             return True
@@ -318,6 +351,49 @@ class Flow:
         self.st.callback_request(self.bid, self.s["id"], self.state.get("at"))
         self.say = ["help_queued"]
         self._repeat()                                     # then carry on where they were
+
+    # conversation ------------------------------------------------------------------
+    def _problem(self, topic):
+        """The caller told us about a difficulty: acknowledge it (our words), note the topic
+        (never the words) for the district worker, remember it if it answers a later question."""
+        told = self.state.setdefault("problems", [])
+        if topic in told:
+            self.say.append("prob_noted")
+            return
+        told.append(topic)
+        if self.bid:
+            self.st.concern(self.bid, self.s["id"], topic, self.state.get("at"))
+            if topic in CALLBACK_PROBLEMS:
+                self.st.callback_request(self.bid, self.s["id"], self.state.get("at"))
+        if topic in Q5_HINT:
+            self.state.setdefault("hints", {})["q5"] = Q5_HINT[topic]
+        self.say.append(f"prob-{topic}")
+
+    def _go_back(self, target):
+        """'पिछला सवाल' or 'मेरी पढ़ाई वाला जवाब बदलना है': ask that question again, then carry on."""
+        at = self.state.get("at")
+        if at == "READBACK":                               # after the read-back: edit, back to the read-back
+            self.say.append("go_back_ok")
+            return self._ask("q7" if target == "prev" else target, editing=True)
+        if at != "FIELD":
+            return self._repeat()
+        cur = self.state["field"]
+        if target == "prev":
+            asked = self.st.answers(self.bid)
+            before = [f for f in FIELDS[:FIELDS.index(cur)] if f in asked]
+            if not before:
+                self.say.append("go_back_first")
+                return self._repeat()
+            target = before[-1]
+        if FIELDS.index(target) >= FIELDS.index(cur):     # only backwards: forward would skip questions
+            return self._repeat()
+        if target == "q2":                                 # new family trade: its years are asked again
+            y = self.st.answers(self.bid).get("q2_years")
+            if y and y["confirmed_at"]:
+                self.st.put_answer(self.bid, "q2_years", y["value"], y["confidence"], y["method"],
+                                   self.s["id"], confirmed=False)
+        self.say.append("go_back_ok")
+        self._ask(target, editing=self.state.get("editing", False), revisit=True)
 
     def _is_echo(self, inp) -> bool:
         """Speakerphone: the caller's audio can carry our own last prompt back to us. If what was
@@ -430,10 +506,14 @@ class Flow:
             return self._readback_start()
         self._ask(nxt)
 
-    def _ask(self, field, editing=False):
-        self._go("FIELD", field=field, mode="ask", tries=0, silence=0, cand=None, editing=editing)
-        if not editing and field in PROGRESS:
+    def _ask(self, field, editing=False, revisit=False):
+        self._go("FIELD", field=field, mode="ask", tries=0, silence=0, cand=None, editing=editing,
+                 revisit=revisit)
+        if not (editing or revisit) and field in PROGRESS:
             self.say.append(PROGRESS[field])               # "आधे सवाल हो गए…" / "बस आख़िरी सवाल"
+        hint = self.state.get("hints", {}).pop(field, None)
+        if hint and not (editing or revisit):              # told us earlier: check it, don't ask again
+            return self._confirm({"value": hint, "conf": 0.7, "method": "EARLIER"}, lead="you_told_earlier")
         self.say.append(field)
         self.expect = {"kind": "free", "dtmf_map": _field(field)["dtmf"], "timeout_ms": TIMEOUT_MS}
 
@@ -482,6 +562,11 @@ class Flow:
             if key is not None:
                 return self._field(Input("dtmf", digits=key))
         got = spec["extract"](inp.nbest) if inp.nbest else None
+        topic = extract.problem(inp.nbest)
+        if topic and field == "q5" and topic in Q5_HINT:  # at q5 that problem *is* the answer
+            got, topic = got or (Q5_HINT[topic], 0.7, "LEXICON"), None
+        if topic == "no_work" and field == "q3" and got:  # "अभी कोई काम नहीं है": the answer, with its own kind word
+            topic = None
         if (got is None and st["mode"] == "ask" and inp.nbest and extract.leftover_confirmation(inp.nbest)):
             self.say = []                                  # "हाँ, सही है" said twice to the last read-back:
             self.state["last_said_keep"] = True            # not an answer to this question, keep listening
@@ -498,14 +583,21 @@ class Flow:
         if got is None and inp.nbest:
             ai = self._ai(inp, field, *ai_options(field), open_kind=OPEN_KIND.get(field))
             if ai and ai["intent"] == "answer":
+                topic = ai.get("problem") or topic         # an answer that also carries a problem
                 opened = ai["value"] in ("PLACE", "NEW")
                 value = open_value(field, ai) if opened else from_ai(field, ai["value"])
                 if value is not None:
                     got = (value, 0.75, "LLM")
-            elif ai and self._ai_other(ai):
+            elif ai and not (topic and ai["intent"] in ("unclear", "offtopic")) and self._ai_other(ai):
                 return
+        if got is None and topic:                          # a problem, not an answer: never ignored
+            self._problem(topic)
+            self.say += ["back_to_q", field if st["mode"] == "ask" else f"{field}_menu"]
+            return
         if got:
             value, conf, method = got
+            if topic and not (field == "q5" and topic in Q5_HINT):
+                self._problem(topic)                       # "सिलाई करती हूँ, पर पैसे नहीं मिलते"
             if field == "q5" and value == "none" and extract.yes_no(inp.nbest):
                 # "कोई परेशानी है?" → "नहीं" is already a direct answer; reading it back
                 # ("…नहीं, सही है?" → "नहीं") turned into a double negative on real calls
@@ -523,13 +615,13 @@ class Flow:
             return self._menu(["reask_gentle"])
         self.say = ["reask", field]
 
-    def _confirm(self, cand):
+    def _confirm(self, cand, lead="you_said"):
         st = self.state
         st.update(mode="confirm", cand=cand)
         clips = _field(st["field"])["clips"](cand["value"])
         if "years" in cand:
             clips = clips + [f"v-years-{min(cand['years'], 40)}"]
-        self.say += ["you_said", *clips, "is_right_short" if st.get("taught") else "is_right"]
+        self.say += [lead, *clips, "is_right_short" if st.get("taught") else "is_right"]
         st["taught"] = True                            # the "हाँ या नहीं, या 1 या 2" line once is enough
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
@@ -567,7 +659,7 @@ class Flow:
             self.st.set_beneficiary(self.bid, district=where)
         if field == "q2" and value in ("NONE", "OTHER"):
             self.st.put_answer(self.bid, "q2_years", 0, 1.0, "IMPLIED", self.s["id"])
-        self.say.append(self._after_answer(field, value))
+        self.say.append(self._after_answer(field, value, method))
         if field == "q5" and value == "cognitive":
             self._go("GUARDIAN", tries=0, editing=self.state.get("editing"))
             self.say.append("q5_guardian")
@@ -575,7 +667,7 @@ class Flow:
             return
         self._advance(field)
 
-    def _after_answer(self, field, value):
+    def _after_answer(self, field, value, method=None):
         """What a person would say back: a varied thanks, or a warm line where the answer calls
         for one. Only true statements (NSQF levels 1-2 need no schooling; experience counts)."""
         if field == "q1" and isinstance(value, dict) and not value.get("class") and not value.get("literate"):
@@ -585,12 +677,24 @@ class Flow:
         if field == "q3" and isinstance(value, dict) and value.get("concept") in ("NONE", "LABOUR"):
             return "emp_no_work"
         if field == "q5" and value in ("distance", "physical", "care_duty", "cognitive"):
-            return "emp_difficulty"
+            return "emp_difficulty" if method != "EARLIER" else "ack"     # already said sorry once
+        # reasoning out loud: link this answer to an earlier one, the way a counsellor would
+        v = {k: a["value"] for k, a in self.st.answers(self.bid).items() if a["confirmed_at"]}
+        if field == "q3" and isinstance(value, dict) and reasoning.same(value.get("concept"), v.get("q2")):
+            return "reason_same_trade"
+        if field == "q7" and any(reasoning.same(i, d) for i in v.get("q4") or [] for d in value or []):
+            return "reason_demand_match"
+        if field == "q6" and value == "self" and (
+                reasoning.REAL(v.get("q2")) and (v.get("q2_years") or 0) >= 3
+                or reasoning.REAL((v.get("q3") or {}).get("concept"))):
+            return "reason_skill_to_business"
         return ACKS[FIELDS.index(field) % len(ACKS)]
 
     def _defer(self):
         field = self.state["field"]
-        self.st.put_answer(self.bid, field, None, 0.0, "DEFER", self.s["id"], confirmed=False)
+        old = self.st.answers(self.bid).get(field) if self.state.get("revisit") else None
+        if not (old and old["value"] is not None):          # went back, then gave up: keep the old answer
+            self.st.put_answer(self.bid, field, None, 0.0, "DEFER", self.s["id"], confirmed=False)
         self.say.append("deferred")
         self._advance(field)
 
@@ -659,7 +763,9 @@ class Flow:
                    "factors": x.factors}
                   for x in result["eligible"] + ([result["near_miss"]] if result["near_miss"] else [])]
         self.st.save_recommendation(self.bid, result, ranked)
-        self.say += ["recommend_intro", {"kind": "tts", "text": recommend.spoken(result)}, "goodbye"]
+        why = reasoning.assess(prof, result, self.st.concerns(self.bid))
+        self.st.save_insight(self.bid, why)
+        self.say += ["recommend_intro", {"kind": "tts", "text": recommend.spoken(result, why["why"])}, "goodbye"]
         self._close(None)
 
     def _close(self, prompt, completed=True):

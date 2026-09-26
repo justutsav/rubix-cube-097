@@ -47,7 +47,7 @@ start_engine() {
       ASR_PROVIDER="${ASR_PROVIDER:-sarvam}" TTS_PROVIDER="${TTS_PROVIDER:-piper}" \
       uv run -q --python 3.11 --extra tts --extra vosk --extra piper \
       uvicorn engine.server:app --port "$ENGINE_PORT" </dev/null >>"$RUN/engine.log" 2>&1 &
-    echo $! >"$RUN/engine.pid" ) >/dev/null
+    echo $! >"$RUN/engine.pid" ) >/dev/null 2>&1
   wait_http "http://localhost:$ENGINE_PORT/health" 90 && echo "engine   up    :$ENGINE_PORT" \
     || { echo "engine   FAILED — see $RUN/engine.log"; exit 1; }
 }
@@ -57,7 +57,7 @@ start_ivr() {
   local dbg=""; [ "$DEBUG" = 1 ] && dbg="IVR_DEBUG_DIR=$RUN/calls"
   ( cd "$ROOT/channels/ivr" && nohup env $dbg ENGINE_URL="http://localhost:$ENGINE_PORT" \
       uv run -q uvicorn ivr.server:app --port "$IVR_PORT" </dev/null >>"$RUN/ivr.log" 2>&1 &
-    echo $! >"$RUN/ivr.pid" ) >/dev/null
+    echo $! >"$RUN/ivr.pid" ) >/dev/null 2>&1
   wait_http "http://localhost:$IVR_PORT/health" 60 && echo "adapter  up    :$IVR_PORT" \
     || { echo "adapter  FAILED — see $RUN/ivr.log"; exit 1; }
 }

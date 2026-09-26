@@ -134,6 +134,35 @@ using up a try. A menu number said aloud ("नौ") counts as the key. Only the 
 are spoken live. Yes/no questions say "हाँ या नहीं बोलिए, या एक या दो दबाइए" the first time,
 then just "सही है?".
 
+### Conversation, not a form (PS 26097 R7: "empathetic and conversational rather than administrative")
+
+**Problems are heard, never skipped.** If the caller shares a difficulty ("पैसों की तंगी है",
+"बीमार रहता हूँ", "गाँव से कोई साधन नहीं", "भेदभाव होता है"), the engine:
+1. recognises the topic: word list first (`lexicon.json → problems`, free), else the AI
+   (intent `problem`, or `problem` next to an answer). Topics: money, health, travel, family,
+   no_work, documents, discrimination, other;
+2. says our own pre-recorded empathy line for that topic (`prob-*`), which only promises
+   true things ("कम समय वाले कोर्स पहले रखेंगे" is what the recommender does);
+3. stores the **topic, never the words** (`concern` table) for the district worker;
+   discrimination also opens a call-back request;
+4. says "चलिए, अब यह बताइए" and asks the same question again. No try is used up.
+The same topic twice gets a short "जी, यह बात मैंने लिख ली है". Health, travel and family
+problems are remembered: when the difficulty question (q5) comes, it is not asked blind but
+checked: "आपने पहले बताया था, घर की ज़िम्मेदारी, सही है?".
+
+**Going back.** "पिछला सवाल", "पीछे जाओ" or the **star key** asks the previous question again;
+"पढ़ाई वाला जवाब बदलना है" asks the AI which question is meant (only an id from a fixed list)
+and goes there. After the new answer the interview carries on where it was; questions already
+answered are not asked again. Only backwards (forward would skip questions). Changing the family
+trade asks its years again. Going back and then giving up keeps the old answer. After the
+read-back, going back edits that answer and returns to the read-back. The welcome now says
+"पिछले सवाल पर लौटना हो, तो स्टार".
+
+**Reasoning out loud, during the call.** Answers are linked to earlier ones, like a counsellor:
+current work = family trade → "यानी आप परिवार का हुनर ही आगे बढ़ा रहे हैं"; what they want to
+learn = what their area needs → "उसकी आपके इलाके में माँग भी है"; wants own work and has a skill
+→ "अपना काम शुरू करने में यह बहुत काम आएगा".
+
 ## 4. Eligibility (`engine/eligibility.py`, `data/nsqf_entry.json`)
 
 Straight from the NSQF 2023 entry table. Any one alternative is enough:
@@ -161,6 +190,17 @@ the exact gap), or out. Levels above 4 are never recommended.
 4. Top 3, no duplicate titles, at most 2 from one sector; plus the best near-miss.
 5. One plain Hindi reason per course. Self-employment adds the PM-AJAY asset-grant line;
    every result mentions the mandatory financial-literacy module.
+
+6. **Why, overall** (`engine/reasoning.py`): rules over the confirmed answers, the shared
+   problems and the result give the four outputs PS 26097 names (R4):
+   - **pathway**: build on the family skill / grow the current work / a new skill;
+   - **skill gaps**: literacy, one more class or years of experience for the near-miss course,
+     "wants X but no eligible course yet";
+   - **local fit**: interest matches local demand, differs, or unknown;
+   - **constraints**: mobility, care duty, problems shared on the call.
+   Up to two plain Hindi lines of it are said before the courses ("आपके परिवार के काम का अनुभव
+   आपकी ताक़त है, इसलिए…"); the whole assessment is saved (`insight` table) for the district
+   worker. Rules, not a model: every line traces to an answer.
 
 Every saved recommendation records the weights version and the register's sha256.
 No answers → no guess: "a district worker will contact you".

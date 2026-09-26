@@ -208,8 +208,9 @@ def reason(x: Pick, p: Profile) -> str:
     return "यह आपकी पढ़ाई और अनुभव के हिसाब से सही है"
 
 
-def spoken(result: dict) -> str:
-    """The recommendation tail, as one text for TTS. Titles stay as the register spells them."""
+def spoken(result: dict, why: list | None = None) -> str:
+    """The recommendation tail, as one text for TTS. Titles stay as the register spells them.
+    `why`: the overall reasoning lines (reasoning.assess), said before the courses."""
     picks, near = result["eligible"], result["near_miss"]
     if not picks and not near:
         return ("अभी आपके जवाबों से मेल खाता कोई कोर्स नहीं मिला। "
@@ -218,6 +219,7 @@ def spoken(result: dict) -> str:
     parts = []
     if picks:
         parts.append(f"आपके लिए {len(picks)} कोर्स हैं।")
+        parts += why or []
     for i, x in enumerate(picks):
         m = months(x.hours)
         dur = f", करीब {m} महीने का" if m else ""

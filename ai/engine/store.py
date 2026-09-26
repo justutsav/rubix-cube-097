@@ -58,6 +58,13 @@ create table if not exists flag (
   id text primary key, session_id text, phone_hash text, kind text not null,
   at_state text, created_at text not null
 );                                               -- guardrail events; never what was said
+create table if not exists concern (
+  id text primary key, beneficiary_id text not null, session_id text not null, topic text not null,
+  at_state text, created_at text not null
+);                                               -- a problem the caller shared: topic only, never the words
+create table if not exists insight (
+  id text primary key, beneficiary_id text not null, data text not null, created_at text not null
+);                                               -- the reasoning behind a recommendation, for the district worker
 create table if not exists ai_usage (
   day text primary key, calls integer not null
 );
@@ -149,6 +156,17 @@ class Store:
         """Caller pressed the help key: a district worker should call them."""
         self.q("insert into callback_request(id,beneficiary_id,session_id,at_state,created_at) values(?,?,?,?,?)",
                str(uuid.uuid4()), bid, session_id, at_state, now())
+
+    def concern(self, bid, session_id, topic, at_state):
+        self.q("insert into concern values(?,?,?,?,?,?)", str(uuid.uuid4()), bid, session_id, topic,
+               at_state, now())
+
+    def concerns(self, bid) -> list:
+        return [r[0] for r in self.q("select distinct topic from concern where beneficiary_id=?", bid)]
+
+    def save_insight(self, bid, data):
+        self.q("insert into insight values(?,?,?,?)", str(uuid.uuid4()), bid,
+               json.dumps(data, ensure_ascii=False), now())
 
     # --- guardrails ------------------------------------------------------------------
 

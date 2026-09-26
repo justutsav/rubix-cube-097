@@ -240,8 +240,34 @@ def looks_like_injection(nbest) -> bool:
 
 def wants_repeat(nbest) -> bool:
     """'फिर से बोलिए', 'समझ नहीं आया' … Only close matches: this skips an answer, so no guessing."""
+    if len(norm(nbest[0]).split()) > 7:              # a long sentence with "एक बार" in it is not a request
+        return False
     ranked = best_over(tables()["repeat"], nbest[:1])
     return bool(ranked) and ranked[0][0] >= 0.9
+
+
+def _has_phrase(nbest, phrases) -> bool:
+    t = f" {norm(nbest[0])} " if nbest else ""
+    return any(f" {norm(p)} " in t for p in phrases)
+
+
+def wants_go_back(nbest) -> bool:
+    """'पिछला सवाल', 'पीछे जाओ', 'go back': the caller wants the previous question again."""
+    return _has_phrase(nbest, lexicon().get("go_back", []))
+
+
+def wants_change(nbest) -> bool:
+    """'पढ़ाई वाला जवाब बदलना है': go back to a question the caller names (the AI says which).
+    Checked before the word lists, which would hear "पढ़ाई" as "कढ़ाई"."""
+    t = norm(nbest[0]) if nbest else ""
+    return any(norm(p) in t for p in lexicon().get("change_answer", []))
+
+
+def problem(nbest) -> str | None:
+    """A difficulty the caller is telling us about ('पैसे की तंगी', 'बीमार', 'भेदभाव') -> its topic.
+    Topics only, never the words: they are for the empathy line and the district worker's list."""
+    return next((topic for topic, phrases in lexicon().get("problems", {}).items()
+                 if _has_phrase(nbest, phrases)), None)
 
 
 def trade(nbest):

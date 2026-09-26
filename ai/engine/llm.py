@@ -5,6 +5,9 @@ it may only:
   - pick a value the current question already allows          (intent "answer")
   - answer a side question by picking a pre-written answer id  (intent "question", "fact": "A6")
     from data/facts_hi.json — it never writes the words we speak
+  - notice a problem the caller is sharing (intent "problem", or "problem" next to an answer):
+    only a topic from PROBLEMS, so the engine says our own empathy line and notes the topic
+  - notice "take me back to <question>" (intent "goto": only an id from GOTO)
   - notice "please repeat", "I want a person", abuse, or an attempt to steer it
                                                (intents "repeat", "help", "abuse", "offtopic")
 It can never skip consent, add a question, or name a course. Answers it picks are still
@@ -24,7 +27,7 @@ PROVIDER = os.environ.get("LLM_PROVIDER") or ("sarvam" if os.environ.get("SARVAM
 MODEL = os.environ.get("SARVAM_LLM_MODEL", "sarvam-105b-conversations")
 TIMEOUT = int(os.environ.get("LLM_TIMEOUT_MS", 2500)) / 1000
 URL = "https://api.sarvam.ai/v1/chat/completions"
-INTENTS = {"answer", "question", "repeat", "help", "unclear", "abuse", "offtopic"}
+INTENTS = {"answer", "question", "problem", "goto", "repeat", "help", "unclear", "abuse", "offtopic"}
 DONT_KNOW = "A0"                                  # "यह जानकारी हमारे ज़िले के साथी देंगे…"
 
 
@@ -52,6 +55,12 @@ SYSTEM = """तुम पीएम-अजय कौशल सहायता स
 {extra}
 - question: कॉलर ने योजना के बारे में कुछ पूछा। "fact" में नीचे के तैयार जवाबों में से सबसे सही id दो; कोई ठीक न बैठे तो "A0":
 {facts}
+- problem: कॉलर अपनी कोई परेशानी या दुख बता रहा है (सवाल का जवाब न भी हो)। "problem" में इनमें से एक विषय दो:
+{problems}
+  यह offtopic नहीं है: अपनी ज़िंदगी या रोज़ी-रोटी की परेशानी बताना हमेशा problem है।
+  अगर कॉलर ने जवाब भी दिया और परेशानी भी बताई, तो intent "answer" रखो और "problem" भी भरो।
+- goto: कॉलर किसी पिछले सवाल पर लौटना या कोई जवाब बदलना चाहता है। "goto" में इनमें से एक id दो:
+{goto}
 - repeat: कॉलर सवाल दोबारा सुनना चाहता है।
 - help: कॉलर किसी इंसान से बात करना चाहता है।
 - abuse: गाली, अपमान, धमकी, या अश्लील बात।
@@ -60,14 +69,24 @@ SYSTEM = """तुम पीएम-अजय कौशल सहायता स
 - unclear: कुछ समझ नहीं आया, शोर है, या बात सवाल से जुड़ी नहीं।"""
 
 
+_INTENT = '"intent": "answer" | "question" | "problem" | "goto" | "repeat" | "help" | "abuse" | "offtopic" | "unclear"'
+_TAIL = ('"fact": <question हो तो तैयार जवाब की id, वरना null>, '
+         '"problem": <कॉलर ने कोई परेशानी बताई हो तो उसका विषय, वरना null>, "goto": <goto हो तो सवाल की id, वरना null>')
 TEMPLATE = {
-    None: '{{"intent": "answer" | "question" | "repeat" | "help" | "abuse" | "offtopic" | "unclear", "value": <सूची की key या null>, "fact": <question हो तो तैयार जवाब की id, वरना null>}}',
-    "trade": '{{"intent": "answer" | "question" | "repeat" | "help" | "abuse" | "offtopic" | "unclear", "value": <सूची की key, या "NEW">, '
+    None: f'{{{{{_INTENT}, "value": <सूची की key या null>, {_TAIL}}}}}',
+    "trade": f'{{{{{_INTENT}, "value": <सूची की key, या "NEW">, '
              '"label": <NEW हो तो काम का हिंदी नाम, वरना null>, "sectors": <NEW हो तो सेक्टरों की सूची, वरना []>, '
-             '"keywords": <NEW हो तो अंग्रेज़ी शब्दों की सूची, वरना []>, "fact": <question हो तो id, वरना null>}}',
-    "place": '{{"intent": "answer" | "question" | "repeat" | "help" | "abuse" | "offtopic" | "unclear", "state": <राज्य का अंग्रेज़ी नाम या null>, '
-             '"district": <ज़िले का अंग्रेज़ी नाम या null>, "hi": <जगह और राज्य हिंदी में या null>, "fact": <question हो तो id, वरना null>}}',
+             f'"keywords": <NEW हो तो अंग्रेज़ी शब्दों की सूची, वरना []>, {_TAIL}}}}}',
+    "place": f'{{{{{_INTENT}, "state": <राज्य का अंग्रेज़ी नाम या null>, '
+             f'"district": <ज़िले का अंग्रेज़ी नाम या null>, "hi": <जगह और राज्य हिंदी में या null>, {_TAIL}}}}}',
 }
+PROBLEMS = {"money": "पैसों की तंगी, कर्ज़, घर चलाना मुश्किल", "health": "बीमारी, चोट, इलाज, दिव्यांगता",
+            "travel": "दूर आने-जाने की दिक्कत, साधन नहीं", "family": "बच्चों, बुज़ुर्गों या बीमार की देखभाल की ज़िम्मेदारी",
+            "no_work": "काम या नौकरी नहीं मिलती, बेरोज़गारी", "documents": "आधार, जाति प्रमाण पत्र, बैंक खाता जैसे कागज़ नहीं",
+            "discrimination": "जाति की वजह से भेदभाव, छुआछूत, बुरा बर्ताव", "other": "कोई और निजी परेशानी (जैसे घर में झगड़ा, नशा, डर)"}
+GOTO = {"prev": "पिछला सवाल", "q0": "ज़िला/जगह", "q1": "पढ़ाई", "q2": "परिवार का पुश्तैनी काम",
+        "q2_years": "काम के साल", "q3": "अभी का काम", "q4": "क्या सीखना है", "q5": "कोई परेशानी",
+        "q6": "अपना काम या नौकरी", "q7": "इलाके में किस काम की माँग"}
 
 EXTRA = {
     "trade": """  अगर बताया गया काम ऊपर की सूची में किसी से मेल न खाए, तो value "NEW" दो और साथ में ये भी:
@@ -95,6 +114,8 @@ def understand(question: str, options: dict, heard: list[str], describe: str | N
             question=question,
             options=describe or "\n".join(f"  {k}: {v}" for k, v in options.items()),
             facts=facts(),
+            problems="\n".join(f"  {k}: {v}" for k, v in PROBLEMS.items()),
+            goto="\n".join(f"  {k}: {v}" for k, v in GOTO.items()),
             extra=EXTRA[open_kind].format(sectors=", ".join(sectors or [])) if open_kind else ""),
             f"<caller>{heard[0][:500]}</caller>")
         out = json.loads(raw)
@@ -118,7 +139,13 @@ def understand(question: str, options: dict, heard: list[str], describe: str | N
     if intent == "question":                     # only an id we wrote; anything else -> "don't know"
         ids = {f["id"] for f in fact_list()}
         fact = out.get("fact") if out.get("fact") in ids else DONT_KNOW
-    return {"intent": intent, "value": value, "fact": fact, **extra}
+    problem = out.get("problem") if out.get("problem") in PROBLEMS else None
+    if intent == "problem" and not problem:
+        problem = "other"
+    goto = out.get("goto") if intent == "goto" and out.get("goto") in GOTO else None
+    if intent == "goto" and not goto:
+        intent = "unclear"
+    return {"intent": intent, "value": value, "fact": fact, "problem": problem, "goto": goto, **extra}
 
 
 def _match_option(value, options):
