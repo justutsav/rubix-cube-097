@@ -314,12 +314,12 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
 ]
 nqr = [
@@ -338,7 +338,7 @@ vosk = [
 requires-dist = [
     { name = "fastapi" },
     { name = "gtts", marker = "extra == 'tts'" },
-    { name = "httpx", marker = "extra == 'dev'" },
+    { name = "httpx" },
     { name = "httpx", marker = "extra == 'nqr'" },
     { name = "miniaudio", marker = "extra == 'tts'" },
     { name = "openpyxl", marker = "extra == 'nqr'" },

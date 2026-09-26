@@ -6,10 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
+    "httpx",                          # Sarvam speech APIs
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "httpx"]
+dev = ["pytest"]
 nqr = ["httpx", "openpyxl"]           # refresh the NQR snapshot (tools/import_nqr.py)
 tts = ["gtts", "miniaudio"]           # dev text-to-speech, no account
 vosk = ["vosk==0.3.44"]              # offline speech-to-text, no account; 0.3.45 has no macOS wheel

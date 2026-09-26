@@ -42,7 +42,7 @@ class FakeCall:
         self.keys = list(keys)            # per prompt: press these keys instead of speaking
         self.barge_in = barge_in          # answer 0.5 s into each prompt instead of waiting
         self.prompt_started = False
-        self.sid = "fake-stream-1"
+        self.sid = f"fake-stream-{uuid.uuid4().hex[:8]}"   # distinct per call, so reports can count calls
         self.call_sid = f"fake-call-{uuid.uuid4().hex[:8]}"   # new call each run, like Exotel
         self.phone = phone
         self.outgoing: list[bytes] = []   # caller frames waiting to be streamed

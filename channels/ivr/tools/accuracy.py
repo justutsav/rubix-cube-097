@@ -23,7 +23,9 @@ import hashlib
 import json
 import re
 import sys
+import time
 import unicodedata
+import zlib
 import wave
 from pathlib import Path
 
@@ -79,36 +81,45 @@ def endpoint(pcm):
     return None
 
 
-def run(rows, engine, conditions):
+def run(rows, engine, conditions, pace=0.0):
     results = {c: [] for c in conditions}
     with httpx.Client(base_url=engine, timeout=30) as c:
         for row in rows:
             clean = audio_for(row, engine)
             expected = json.loads(row["expected"])
             for cond in conditions:
-                pcm = degrade(clean, seed=hash(row["text"]) & 0xFFFF, **CONDITIONS[cond])
+                pcm = degrade(clean, seed=zlib.crc32(row["text"].encode()), **CONDITIONS[cond])   # same noise every run
                 utt = endpoint(pcm)
                 if utt is None:
                     results[cond].append(dict(row, heard=None, value=None, ok=False, errs=len(words(row["text"])),
-                                              n=len(words(row["text"])), vad_miss=True))
+                                              n=len(words(row["text"])), vad_miss=True, asr=None, ms=None))
                     continue
+                time.sleep(pace)                                  # stay under a cloud provider's rate limit
+                t0 = time.monotonic()
                 j = c.post("/v1/extract", json={"field": row["field"], "utterance": {
                     "kind": "audio", "rate": 8000, "data": base64.b64encode(utt).decode()}}).json()
+                ms = round((time.monotonic() - t0) * 1000)
                 heard = (j.get("nbest") or [""])[0]
                 errs, n = wer(row["text"], heard)
                 results[cond].append(dict(row, heard=heard, value=j["value"], ok=j["value"] == expected,
-                                          errs=errs, n=n, vad_miss=False))
+                                          errs=errs, n=n, vad_miss=False, asr=j.get("asr"), ms=ms))
     return results
 
 
 def report(results):
-    lines = ["| Line condition | Word error rate | Answer understood | VAD missed the answer |",
-             "|---|---|---|---|"]
+    lines = ["| Line condition | Word error rate | Answer understood | Time p50 / p95 | VAD missed | Transcribed by |",
+             "|---|---|---|---|---|---|"]
     for cond, rs in results.items():
         w = sum(r["errs"] for r in rs) / max(sum(r["n"] for r in rs), 1)
         acc = sum(r["ok"] for r in rs) / max(len(rs), 1)
         miss = sum(r["vad_miss"] for r in rs)
-        lines.append(f"| {cond} | {w:.0%} | {acc:.0%} ({sum(r['ok'] for r in rs)}/{len(rs)}) | {miss} |")
+        used = {}
+        for r in rs:
+            used[r["asr"] or "none"] = used.get(r["asr"] or "none", 0) + 1
+        by = ", ".join(f"{k} {v}" for k, v in sorted(used.items(), key=lambda kv: -kv[1]))
+        ms = sorted(r["ms"] for r in rs if r["ms"] is not None)
+        t = f"{ms[len(ms) // 2]} / {ms[int(0.95 * (len(ms) - 1))]} ms" if ms else "—"
+        lines.append(f"| {cond} | {w:.0%} | {acc:.0%} ({sum(r['ok'] for r in rs)}/{len(rs)}) | {t} | {miss} | {by} |")
     fails = [r for r in results[list(results)[-1]] if not r["ok"]]
     if fails:
         lines += ["", f"Misses under `{list(results)[-1]}`:", ""]
@@ -121,11 +132,12 @@ if __name__ == "__main__":
     p.add_argument("--engine", default="http://localhost:8001")
     p.add_argument("--set", type=Path, default=SYNTH)
     p.add_argument("--conditions", default=",".join(CONDITIONS))
+    p.add_argument("--pace", type=float, default=0.0, help="seconds between requests (cloud rate limits)")
     p.add_argument("--out", type=Path, help="also write the markdown table here")
     p.add_argument("--json", type=Path, help="also write every row's result here")
     a = p.parse_args()
     rows = list(csv.DictReader(a.set.open(encoding="utf-8")))
-    res = run(rows, a.engine, a.conditions.split(","))
+    res = run(rows, a.engine, a.conditions.split(","), a.pace)
     md = report(res)
     print(md)
     if a.out:

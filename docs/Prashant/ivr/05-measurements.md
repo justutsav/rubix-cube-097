@@ -10,6 +10,52 @@ within each section. Synthetic voice = the engine's gTTS voice: good for compari
 (38 answers across all fields) · speech-to-text Vosk small Hindi (offline) · line conditions from
 `tools/phone_line.py` (300–3400 Hz band, G.711 mu-law, white noise, lost 20 ms packets).
 
+### 2026-09-26, Vosk vs Sarvam on the same audio (lexicon 2026-09-26.2)
+
+Same 38 answers, same noise (seeded per answer, reproducible), same word list; only
+`ASR_PROVIDER` changes. "Time" = one answer through `/v1/extract` (speech-to-text + understanding).
+
+**Vosk small Hindi (offline, free, on the laptop)**
+
+| Line condition | Word error rate | Answer understood | Time p50 / p95 | VAD missed | Transcribed by |
+|---|---|---|---|---|---|
+| clean | 2% | 100% (38/38) | 169 / 302 ms | 0 | vosk 38 |
+| phone | 3% | 97% (37/38) | 180 / 284 ms | 0 | vosk 38 |
+| phone+noise20 | 5% | 95% (36/38) | 211 / 354 ms | 0 | vosk 38 |
+| phone+noise10 | 25% | 82% (31/38) | 314 / 465 ms | 0 | vosk 38 |
+| phone+loss5 | 4% | 100% (38/38) | 192 / 285 ms | 0 | vosk 38 |
+| phone+noise10+loss5 | 36% | 68% (26/38) | 354 / 489 ms | 0 | vosk 38 |
+
+**Sarvam `saarika:v2.5` (cloud), paced 1 request/s**
+
+| Line condition | Word error rate | Answer understood | Time p50 / p95 | VAD missed | Transcribed by |
+|---|---|---|---|---|---|
+| clean | 3% | 100% (38/38) | 325 / 613 ms | 0 | sarvam 38 |
+| phone | 4% | 97% (37/38) | 304 / 573 ms | 0 | sarvam 38 |
+| phone+noise20 | 4% | 100% (38/38) | 319 / 414 ms | 0 | sarvam 38 |
+| phone+noise10 | 8% | 92% (35/38) | 308 / 431 ms | 0 | sarvam 38 |
+| phone+loss5 | 4% | 97% (37/38) | 329 / 404 ms | 0 | sarvam 38 |
+| phone+noise10+loss5 | 11% | 89% (34/38) | 302 / 408 ms | 0 | sarvam 38 |
+
+**Reading it:** on a clean line both understand every answer. As the line degrades, Vosk's
+word errors climb to 36% and answers to 68%; Sarvam stays at 11% and 89%. Vosk is faster
+(~200 ms on the laptop, no network) and free; Sarvam costs ~300 ms more per turn and money,
+and is the one that survives a bad village line. Both stay well inside the 1.8 s budget.
+
+**Rate limit found.** Unpaced (back-to-back requests) Sarvam answered `429 Too Many Requests`
+on 50 of 228 answers, plus 6 timeouts over 2 s. Every one fell back to Vosk and the call went
+on, which is the designed behaviour, but it caps simultaneous calls on this key's plan. Unpaced
+run, for the record:
+
+| Line condition | Word error rate | Answer understood | Time p50 / p95 | VAD missed | Transcribed by |
+|---|---|---|---|---|---|
+| clean | 3% | 100% (38/38) | 367 / 481 ms | 0 | sarvam 35, vosk 3 |
+| phone | 4% | 100% (38/38) | 414 / 587 ms | 0 | sarvam 28, vosk 10 |
+| phone+noise20 | 4% | 100% (38/38) | 400 / 691 ms | 0 | sarvam 27, vosk 11 |
+| phone+noise10 | 12% | 89% (34/38) | 409 / 641 ms | 0 | sarvam 29, vosk 9 |
+| phone+loss5 | 3% | 97% (37/38) | 380 / 503 ms | 0 | sarvam 32, vosk 6 |
+| phone+noise10+loss5 | 17% | 89% (34/38) | 414 / 703 ms | 0 | sarvam 28, vosk 10 |
+
 ### 2026-09-26, after fixing what the first run found (lexicon 2026-09-26.2)
 
 | Line condition | Word error rate | Answer understood | VAD missed the answer |

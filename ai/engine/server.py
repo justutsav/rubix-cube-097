@@ -26,8 +26,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 app = FastAPI(title="PS 26097 interview engine")
 STORE = Store()
-if asr.PROVIDER == "vosk":
-    asr.transcribe(b"\x00" * 3200, 8000)       # load the model now, not on the first caller
+asr.warm_up()                                  # models and connections ready before the first caller
 MAX_AUDIO_B64 = 700_000        # ~20 s of 8 kHz 16-bit audio; longer is not an answer
 
 
@@ -109,13 +108,15 @@ def extract_one(req: ExtractRequest):
     The accuracy harness (channels/ivr/tools/accuracy.py) scores these."""
     inp = _input(req.utterance)
     if not inp.nbest:
-        return {"nbest": inp.nbest, "value": None, "confidence": 0.0, "method": None}
+        return {"nbest": inp.nbest, "value": None, "confidence": 0.0, "method": None,
+                "asr": asr.last_used()}
     fn = extract.yes_no if req.field == "yes_no" else _field(req.field)["extract"]
     got = fn(inp.nbest) or (llm.classify(req.field, inp.nbest) if req.field in FIELDS else None)
     value, conf, method = got if got else (None, 0.0, None)
     if got and req.field in FIELDS:
         value = _normalise(req.field, value, inp.nbest)          # same shape the flow stores
-    return {"nbest": inp.nbest, "value": value, "confidence": conf, "method": method}
+    return {"nbest": inp.nbest, "value": value, "confidence": conf, "method": method,
+            "asr": asr.last_used()}
 
 
 @app.get("/v1/prompts/{lang}")
