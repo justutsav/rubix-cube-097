@@ -95,3 +95,49 @@ def test_long_replies_are_cut_at_a_sentence_end():
     long = "पहला वाक्य है। " + "दूसरा बहुत लंबा वाक्य " * 20 + "।"
     assert llm._short(long) == "पहला वाक्य है।"
     assert llm._short("छोटा जवाब।") == "छोटा जवाब।"
+
+
+# --- open answers: any place, any job ------------------------------------------------
+
+def test_any_place_in_india_is_understood_and_checked(caller, ai):
+    calls, replies = ai
+    consent(caller)
+    replies.append({"intent": "answer", "value": None, "state": "Odisha", "district": "Khordha",
+                    "hi": "भुवनेश्वर, ओडिशा"})
+    j = caller.say("मैं भुवनेश्वर से बोल रहा हूँ")
+    assert j["say"][1] == {"kind": "tts", "text": "भुवनेश्वर, ओडिशा"} and caller.ids(j)[0] == "you_said"
+    caller.say("हाँ")
+    b = STORE.q("select district from beneficiary where phone_hash=?", caller.phone).fetchone()
+    assert b[0] == "Khordha, Odisha"
+
+
+def test_a_place_outside_india_is_not_accepted(caller, ai):
+    calls, replies = ai
+    consent(caller)
+    replies.append({"intent": "answer", "state": "Atlantis", "district": "X", "hi": "अटलांटिस"})
+    assert caller.ids(caller.say("मैं अटलांटिस से बोल रहा हूँ"))[0] == "reask"
+
+
+def test_any_job_becomes_a_custom_trade_with_real_sectors(caller, ai):
+    calls, replies = ai
+    consent(caller)
+    caller.key("1")                                                   # q0
+    caller.key("4")                                                   # q1 10th
+    replies.append({"intent": "answer", "value": "NEW", "label": "इंजीनियर",
+                    "sectors": ["Electronics & HW", "Made Up Sector"], "keywords": ["technician", "Engineer!"]})
+    j = caller.say("हमारे घर में सब इंजीनियर हैं")
+    assert j["say"][1] == {"kind": "tts", "text": "इंजीनियर"}
+    caller.say("हाँ")
+    b = STORE.q("select id from beneficiary where phone_hash=?", caller.phone).fetchone()
+    v = STORE.answers(b[0])["q2"]["value"]
+    assert v == {"id": "CUSTOM", "label": "इंजीनियर", "sectors": ["Electronics & HW"],
+                 "keywords": ["technician", "engineer"]}                # made-up sector and junk dropped
+
+
+def test_custom_trade_drives_real_recommendations():
+    import datetime as dt
+    from engine import recommend
+    eng = {"id": "CUSTOM", "label": "इंजीनियर", "sectors": ["Electronics & HW"], "keywords": ["technician"]}
+    r = recommend.recommend(recommend.Profile(10, True, eng, 0, None, [eng], None, "wage", []),
+                            today=dt.date(2026, 9, 26))
+    assert sum(x.sector == "Electronics & HW" for x in r["eligible"]) >= 2   # its sectors lead

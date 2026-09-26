@@ -14,9 +14,10 @@ value (still read back), answer a side question from the fact sheet, or spot "re
 """
 
 import os
+import re
 from dataclasses import dataclass
 
-from . import extract, llm, prompts, recommend
+from . import extract, llm, places, prompts, recommend
 from .districts import load as districts
 from .extract import lexicon
 from .prompts import YEARS_DTMF
@@ -55,7 +56,24 @@ def _trade_dtmf():
 
 
 def _trade_clip(v):
+    """Known trade -> its recorded clip; a job the caller named in their own words -> spoken live."""
+    if isinstance(v, dict):
+        return {"kind": "tts", "text": v["label"]}
     return f"v-trade-{v.lower()}"
+
+
+def _place_clips(v):
+    if v.get("id"):
+        return [f"v-dist-{v['id'].lower()}"]
+    return [{"kind": "tts", "text": v.get("hi") or v.get("district") or "दूसरा ज़िला"}]
+
+
+def _pilot_place(pid):
+    """Pilot district id (word list / keypad) -> the stored place."""
+    if pid == "OTHER":
+        return {"id": "OTHER"}
+    d = next(x for x in districts() if x["id"] == pid)
+    return {"id": pid, "district": d["name"], "state": d["state"], "hi": d["hi"]}
 
 
 def _edu_clip(v):
@@ -72,7 +90,7 @@ def _field(name):
     return {
         "q0": dict(extract=extract.district,
                    dtmf={str(d["dtmf"]): d["id"] for d in districts()} | {"9": "OTHER"},
-                   clips=lambda v: [f"v-dist-{v.lower()}"]),
+                   clips=_place_clips),
         "q1": dict(extract=extract.education,
                    dtmf={k: {"class": c} for k, c in lex["education"]["dtmf"].items()},
                    clips=_edu_clip),
@@ -92,10 +110,11 @@ def _field(name):
 def ai_options(field):
     """(allowed values -> Hindi label, compact description or None) the AI may choose from."""
     lex = lexicon()
-    trades = {c["id"]: c["hi"] for c in lex["trades"]} | {"OTHER": "कुछ और"}
+    trades = {c["id"]: c["hi"] for c in lex["trades"]} | {"NEW": "सूची में नहीं: नया काम (नीचे देखो)"}
     return {
-        "q0": ({d["id"]: d["hi"] for d in districts()} | {"OTHER": "कोई और ज़िला"}, None),
-        "q1": ({"0": "कभी नहीं पढ़े", "literate": "पढ़ना-लिखना आता है, स्कूल नहीं गए", "5": "पाँचवीं तक",
+        "q0": ({}, "  (कोई सूची नहीं: भारत की कोई भी जगह)"),
+        "q1": ({"0": "कभी नहीं पढ़े", "literate": "थोड़ा-बहुत पढ़े, पढ़ना-लिखना आता है, या कक्षा साफ़ न बताएँ",
+                "5": "पाँचवीं तक",
                 "8": "आठवीं तक", "9": "नौवीं", "10": "दसवीं", "11": "ग्यारहवीं", "12": "बारहवीं",
                 "iti": "आईटीआई या डिप्लोमा", "15": "कॉलेज, ग्रेजुएट या उससे ज़्यादा"}, None),
         "q2": (trades, None), "q3": (trades, None), "q4": (trades, None), "q7": (trades, None),
@@ -105,6 +124,29 @@ def ai_options(field):
                 "cognitive": "समझने या याद रखने में परेशानी"}, None),
         "q6": ({"self": "अपना काम", "wage": "नौकरी", "either": "कुछ भी"}, None),
     }[field]
+
+
+OPEN_KIND = {"q0": "place", "q2": "trade", "q3": "trade", "q4": "trade", "q7": "trade"}
+
+
+def open_value(field, ai):
+    """An open answer from the AI (any place, any job) -> stored value, or None if it fails the checks."""
+    if OPEN_KIND.get(field) == "place":
+        ok = places.check(ai.get("state"), ai.get("district"))
+        if not ok:
+            return None
+        state, district = ok
+        return {"id": None, "district": district, "state": state,
+                "hi": re.sub(r"[^\u0900-\u097F ,]", "", str(ai.get("hi") or ""))[:60] or None}
+    label = re.sub(r"[^\u0900-\u097F ]", "", str(ai.get("label") or "")).strip()[:30]
+    if not label:
+        return None
+    known = recommend.sectors()
+    custom = {"id": "CUSTOM", "label": label,
+              "sectors": [x for x in (ai.get("sectors") or []) if x in known][:3],
+              "keywords": [k for k in (re.sub(r"[^a-z ]", "", str(k).lower()).strip()
+                                       for k in (ai.get("keywords") or [])) if 2 < len(k) < 25][:5]}
+    return [custom] if field in ("q4", "q7") else custom
 
 
 def from_ai(field, value):
@@ -124,6 +166,8 @@ YES_NO = ({"yes": "हाँ, सहमति", "no": "नहीं, असह�
 
 def _normalise(field, value, nbest=None):
     """Shape a raw extracted/keyed value into what is stored."""
+    if field == "q0" and isinstance(value, str):
+        return _pilot_place(value)
     if field == "q3":
         return {"concept": value, "status": extract.work_status(nbest or [], value)}
     if field in ("q4", "q7") and value == ["OTHER"]:
@@ -177,7 +221,7 @@ class Flow:
         at = self.state.get("at")
         return at in YES_NO_STATES or (at == "FIELD" and self.state.get("mode") == "confirm")
 
-    def _ai(self, inp, question_id, options, describe=None):
+    def _ai(self, inp, question_id, options, describe=None, open_kind=None):
         """Ask the AI, within the per-call budget. None = not asked / no help."""
         heard = inp.nbest or []
         words = extract.norm(heard[0]).split() if heard else []
@@ -185,7 +229,8 @@ class Flow:
         if len(words) < 2 or used >= AI_PER_CALL:          # noise, a lone word, or out of budget
             return None
         self.state["ai_used"] = used + 1
-        return llm.understand(prompts.catalogue("hi").get(question_id, question_id), options, heard, describe)
+        return llm.understand(prompts.catalogue("hi").get(question_id, question_id), options, heard, describe,
+                              open_kind, recommend.sectors() if open_kind == "trade" else None)
 
     def _ai_yes_no(self, inp):
         """Yes/no question, word list failed. -> (handled, input to pass on)."""
@@ -379,9 +424,12 @@ class Flow:
             self.state["last_said_keep"] = True
             return
         if got is None and inp.nbest:
-            ai = self._ai(inp, field, *ai_options(field))
+            ai = self._ai(inp, field, *ai_options(field), open_kind=OPEN_KIND.get(field))
             if ai and ai["intent"] == "answer":
-                got = (from_ai(field, ai["value"]), 0.75, "LLM")
+                opened = ai["value"] in ("PLACE", "NEW")
+                value = open_value(field, ai) if opened else from_ai(field, ai["value"])
+                if value is not None:
+                    got = (value, 0.75, "LLM")
             elif ai and self._ai_other(ai):
                 return
         if got:
@@ -442,7 +490,9 @@ class Flow:
         field = self.state["field"]
         self.st.put_answer(self.bid, field, value, conf, method, self.s["id"])
         if field == "q0":
-            self.st.set_beneficiary(self.bid, district=value)
+            where = value.get("id") if value.get("id") and value["id"] != "OTHER" else \
+                ", ".join(x for x in (value.get("district"), value.get("state")) if x) or "OTHER"
+            self.st.set_beneficiary(self.bid, district=where)
         if field == "q2" and value in ("NONE", "OTHER"):
             self.st.put_answer(self.bid, "q2_years", 0, 1.0, "IMPLIED", self.s["id"])
         self.say.append(self._after_answer(field, value))

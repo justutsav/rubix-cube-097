@@ -91,6 +91,19 @@ It returns one of:
 | `repeat` | Repeats the question |
 | `unclear` | Normal re-ask → keypad menu |
 
+**Open answers, at every step that is not a fixed choice:**
+- *Place (q0):* any place in India. Pilot districts match instantly; anything else ("मैं
+  भुवनेश्वर से बोल रहा हूँ") goes to the AI, which returns state + district in English and the
+  place in Hindi; the state and district are checked against `data/india_districts.json` (all
+  states, 722 districts; a valid state with a newer district is still accepted). Read back
+  live: "भुवनेश्वर, ओडिशा — सही है?".
+- *Jobs (q2, q3, q4, q7):* the 26 known trades match instantly; any other job ("इंजीनियर",
+  "वीडियो एडिटिंग") becomes a custom trade: a Hindi label, 1–3 real NQR sectors (made-up ones
+  are dropped) and search words, matched on 4-letter stems so "video editing" finds "VFX
+  Editor". Recommendations use it like any other trade.
+- Education, difficulty and job-or-own-work stay closed lists (they feed fixed rules).
+Keypad menus remain the fallback when the AI is off, out of budget, or unsure.
+
 It also decides yes/no when a caller answers a yes/no question in their own words ("चलिए शुरू
 करते हैं"). Guard rails: a value not on the list is thrown away; replies come only from the fact
 sheet (fees, stipend, centre, dates → "यह जानकारी हमारे ज़िले के साथी देंगे"), are cut at a

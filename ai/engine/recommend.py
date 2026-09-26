@@ -33,6 +33,12 @@ def weights() -> dict:
 
 
 @lru_cache(maxsize=1)
+def sectors() -> list:
+    """Every NQR sector name, for mapping a job the caller named in their own words."""
+    return sorted({r["sector"] for r in register()["rows"] if r["sector"]})
+
+
+@lru_cache(maxsize=1)
 def concepts() -> dict:
     return {c["id"]: c for c in lexicon()["trades"]}
 
@@ -79,11 +85,14 @@ def _kw(words, text):
 def _hit(concept_id, q, text=None):
     """How strongly a course is about a trade. Title/occupation beat description:
     a fitness course 'tailored for athletes' is not a tailoring course."""
-    c = concepts().get(concept_id)
+    c = concept_id if isinstance(concept_id, dict) else concepts().get(concept_id)   # custom job: its own sectors
     if not c:
         return 0.0
     head = " ".join(filter(None, (q["title"], q["occupation"]))).lower()
     sec = q["sector"] in c["sectors"]
+    if c.get("id") == "CUSTOM":
+        # the AI's words ("video editing") must still find "Video Editor": match 4-letter stems
+        c = dict(c, keywords=sorted({w[:4] for k in c["keywords"] for w in k.split() if len(w) >= 4}))
     if _kw(c["keywords"], head):
         return 1.0 if sec else 0.8
     if sec:
