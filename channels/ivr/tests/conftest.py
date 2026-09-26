@@ -85,6 +85,13 @@ class ScriptedEngine:
                 "terminal": i == len(self.script) - 1}
 
 
+@pytest.fixture(autouse=True)
+def _no_local_env(monkeypatch):
+    """Tests must not depend on a developer's channels/ivr/.env (e.g. a live STREAM_TOKEN)."""
+    for k in ("STREAM_TOKEN", "MISSED_CALL_SECRET"):
+        monkeypatch.delenv(k, raising=False)
+
+
 @pytest.fixture
 def eng(monkeypatch):
     """Scripted engine + small distinct prompts: q1 (long, so it can be interrupted),

@@ -2,6 +2,7 @@
 
 import array
 import asyncio
+import json
 import math
 import random
 
@@ -227,12 +228,22 @@ def test_place_call_without_settings_does_nothing(monkeypatch):
 
 
 def test_stream_token_required_when_set(eng, monkeypatch):
+    import base64 as b64
     monkeypatch.setenv("STREAM_TOKEN", "t0ken")
     c = TestClient(server.app)
-    with pytest.raises(Exception):
-        with c.websocket_connect("/stream") as ws:            # no token: closed before accept
-            ws.receive_text()
-    with c.websocket_connect("/stream?token=t0ken") as ws:     # right token: normal call
-        Line(ws).start()
-        audio, _ = Line(ws).hear()
-        assert voice(audio) == clip(1, ms=2000)
+
+    def call(path="/stream", headers=None, params=None):
+        with c.websocket_connect(path, headers=headers or {}) as ws:
+            ws.send_text(json.dumps({"event": "connected"}))
+            ws.send_text(json.dumps({"event": "start", "stream_sid": "s1", "start": {
+                "call_sid": "c1", "from": "+911", "custom_parameters": params or {}}}))
+            audio, _ = Line(ws).hear()
+            return voice(audio)
+
+    # each accepted call hears a prompt (the scripted engine moves on across calls)
+    assert call("/stream?token=t0ken")                                       # query (softphone)
+    assert call(headers={"authorization": "Basic " + b64.b64encode(b"x:t0ken").decode()})
+    assert call(params={"token": "t0ken"})                                   # Exotel custom parameter
+    for bad in ({"params": {"token": "nope"}}, {}):                          # wrong / missing
+        with pytest.raises(Exception):
+            call(**bad)
