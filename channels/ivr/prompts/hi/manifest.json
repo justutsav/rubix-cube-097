@@ -4,6 +4,7 @@
 "consent": "8716c41245027578",
 "deferred": "d51324306fc7c2a1",
 "goodbye": "f424ab74e0ca1ecd",
+"help_queued": "2819b6d6c64cbc51",
 "hmm": "8a2aa4af26026df7",
 "is_right": "8f1efcac9449187e",
 "label_q1": "dedbc7abb9a159b6",
@@ -13,6 +14,7 @@
 "label_q5": "27cabb14ce3990c5",
 "label_q6": "dd13db90d337f4a2",
 "label_q7": "b699c609d59f2e6c",
+"lang_select": "ebf0fb0cb2f791ae",
 "menu_other": "b54607283c8e885a",
 "new_start": "383fb4cfd9180b1e",
 "nudge": "35decb4cc87228fb",
@@ -137,6 +139,6 @@
 "v-years-7": "b943d22ffe778769",
 "v-years-8": "3d2111f4c25feb70",
 "v-years-9": "187d67c3aa8db292",
-"welcome": "0810bd1531958e64",
+"welcome": "2678daa4472ca087",
 "you_said": "f80516d1258df39e"
 }

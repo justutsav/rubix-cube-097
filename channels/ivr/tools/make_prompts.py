@@ -42,9 +42,12 @@ def trim(samples, threshold=300, margin=400):
     return samples[max(0, loud[0] - margin):loud[-1] + margin]
 
 
+VOICE = {"bho": "hi"}      # no Bhojpuri voice in gTTS: the Hindi voice reads the Devanagari
+
+
 def render(text, out, lang="hi"):
     mp3 = io.BytesIO()
-    gTTS(text, lang=lang).write_to_fp(mp3)
+    gTTS(text, lang=VOICE.get(lang, lang)).write_to_fp(mp3)
     samples = miniaudio.decode(mp3.getvalue(), output_format=miniaudio.SampleFormat.SIGNED16,
                                nchannels=1, sample_rate=8000).samples
     out.parent.mkdir(parents=True, exist_ok=True)

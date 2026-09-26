@@ -30,6 +30,7 @@ def test_prompt_bank_loads_and_resolves():
     assert prompts.resolve(bank, "q1", "hi")
     assert prompts.resolve(bank, "q1.hi.v3", "en") == prompts.resolve(bank, "q1", "hi")
     assert prompts.resolve(bank, "nope", "hi") is None
+    assert prompts.resolve(bank, "q1", "bho") is not None          # no Bhojpuri q1 yet -> Hindi
 
 
 def test_phone_is_hashed_not_sent_raw():

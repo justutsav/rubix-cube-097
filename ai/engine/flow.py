@@ -12,6 +12,7 @@ The AI helper (llm.py) only proposes a value when the word list finds nothing;
 the caller still confirms it.
 """
 
+import os
 from dataclasses import dataclass
 
 from . import extract, llm, recommend
@@ -27,6 +28,9 @@ MAX_MENU = 2           # keypad attempts before deferring
 MAX_SILENCE = 2
 YES_NO_DTMF = {"1": "yes", "2": "no"}
 TIMEOUT_MS = 6000
+LANGS = os.environ.get("ENGINE_LANGS", "hi").split(",")      # e.g. "hi,bho": asks at the start
+LANG_DTMF = {str(i + 1): lang for i, lang in enumerate(LANGS)}
+HELP_KEY = "#"          # any time: ask for a person to call back (0 and 9 are menu choices)
 
 
 @dataclass
@@ -107,6 +111,10 @@ class Flow:
         at = self.state.get("at", "NEW")
         if inp.kind == "opened" and at != "NEW":
             self._repeat()                         # channel reconnected: say the current prompt again
+        elif inp.kind == "dtmf" and HELP_KEY in inp.digits and self.bid and at not in ("DONE", "CLOSED"):
+            self.st.callback_request(self.bid, self.s["id"], at)
+            self.say = ["help_queued"]
+            self._repeat()                         # then carry on where they were
         else:
             getattr(self, "_" + at.lower())(inp)
         return self._reply()
@@ -115,16 +123,33 @@ class Flow:
         st = self.state
         return {"session_id": self.s["id"],
                 "state": ":".join(filter(None, (st.get("at"), st.get("field"), st.get("mode")))),
-                "resumed_from": self.resumed_from, "lang": "hi",
+                "resumed_from": self.resumed_from, "lang": self.state.get("lang", "hi"),
                 "say": [x if isinstance(x, dict) else {"kind": "prerendered", "id": x} for x in self.say],
                 "expect": self.expect, "turn_budget_ms": 1800, "terminal": self.terminal}
 
     def _go(self, at, **kw):
-        self.state = {"at": at, **kw}
+        self.state = {"at": at, **kw, "lang": self.state.get("lang", "hi")}   # language survives every step
         self.s["state"] = self.state
 
     # NEW / RESUME / CONSENT / PIN -------------------------------------------------
     def _new(self, inp):
+        if len(LANGS) > 1:
+            self._go("LANG", tries=0)
+            self.say = ["lang_select"]
+            self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
+            return
+        self._begin()
+
+    def _lang(self, inp):
+        key = inp.digits[-1:] if inp.kind == "dtmf" else ""
+        if key in LANG_DTMF or self.state["tries"] >= 1:        # second miss: default language
+            self.state["lang"] = LANG_DTMF.get(key, LANGS[0])
+            return self._begin()
+        self.state["tries"] += 1
+        self.say = ["lang_select"]
+        self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
+
+    def _begin(self):
         prev = self.st.resumable(self.s["phone_hash"])
         if prev and self.st.answers(prev["id"]):
             self._go("RESUME", target=prev["id"], pin="", fails=0, silence=0)
@@ -408,13 +433,15 @@ class Flow:
     _closed = _done
 
     def _repeat(self):
-        at = self.state.get("at")
+        """Say the current prompt again (after a reconnect or the help key)."""
+        at, st = self.state.get("at"), self.state
         if at == "FIELD":
-            self.say = [self.state["field"] if self.state["mode"] == "ask" else f"{self.state['field']}_menu"]
-        elif at == "CONSENT":
-            self.say = ["consent"]
-        elif at in ("RESUME", "PIN_SET"):
-            self.say = ["resume_offer" if at == "RESUME" else "pin_set"]
+            self.say.append(st["field"] if st["mode"] == "ask" else
+                            f"{st['field']}_menu" if st["mode"] == "menu" else "is_right")
+        elif at in ("CONSENT", "RESUME", "PIN_SET", "LANG", "PICK", "GUARDIAN"):
+            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer", "PIN_SET": "pin_set",
+                             "LANG": "lang_select", "PICK": "readback_pick",
+                             "GUARDIAN": "q5_guardian"}[at])
         elif at == "READBACK":
             self._readback_start()
         else:

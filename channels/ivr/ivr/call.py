@@ -108,6 +108,7 @@ class Call:
                 await self._end("sorry")   # never leave the caller in silence
                 return
             engine_ms = round((loop.time() - t0) * 1000)
+            self.lang = reply.get("lang", self.lang)           # the caller may have picked a language
             self.turn_no += 1
             self._play(reply["say"])
             self.done = self.engine_done = bool(reply.get("terminal"))

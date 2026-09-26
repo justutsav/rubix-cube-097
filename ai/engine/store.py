@@ -52,6 +52,10 @@ create table if not exists consent_event (
   id text primary key, beneficiary_id text not null, kind text not null,
   script_version text not null, channel text not null, captured_at text not null
 );
+create table if not exists callback_request (
+  id text primary key, beneficiary_id text not null, session_id text not null,
+  at_state text not null, status text not null default 'OPEN', created_at text not null
+);
 create table if not exists recommendation (
   id text primary key, beneficiary_id text not null, ranked text not null,
   weights_version text not null, nqr_snapshot_sha text not null,
@@ -140,6 +144,11 @@ class Store:
                   confirmed_at=excluded.confirmed_at, session_id=excluded.session_id""",
                bid, field, None if value is None else json.dumps(value, ensure_ascii=False),
                confidence, method, now() if confirmed else None, session_id)
+
+    def callback_request(self, bid, session_id, at_state):
+        """Caller pressed the help key: a district worker should call them."""
+        self.q("insert into callback_request(id,beneficiary_id,session_id,at_state,created_at) values(?,?,?,?,?)",
+               str(uuid.uuid4()), bid, session_id, at_state, now())
 
     def save_recommendation(self, bid, result, ranked):
         self.q("insert into recommendation values(?,?,?,?,?,?,?)", str(uuid.uuid4()), bid,

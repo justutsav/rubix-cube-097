@@ -12,7 +12,9 @@ from .districts import load as districts
 from .extract import lexicon
 
 BASE_HI = {
-    "welcome": "नमस्ते। यह पीएम अजय की ओर से कौशल सहायता सेवा है।",
+    "welcome": "नमस्ते। यह पीएम अजय की ओर से कौशल सहायता सेवा है। किसी भी समय किसी साथी से बात करने के लिए हैश दबाइए।",
+    "lang_select": "हिंदी के लिए एक दबाइए। भोजपुरी खातिर दू दबाईं।",
+    "help_queued": "ठीक है, हमारे साथी आपको जल्द फ़ोन करेंगे। तब तक चाहें तो बात जारी रखिए।",
     "consent": ("हम आपसे आपके काम और पढ़ाई के बारे में सात सवाल पूछेंगे, ताकि सही कोर्स बता सकें। "
                 "आपकी आवाज़ रिकॉर्ड नहीं रखी जाएगी। जवाब फ़ोन, व्हाट्सऐप या हमारे साथी के ज़रिए आगे बढ़ाए जा सकते हैं। "
                 "क्या आप तैयार हैं? हाँ के लिए एक, नहीं के लिए दो दबाइए, या बोलिए।"),
@@ -81,6 +83,29 @@ BASE_HI = {
     "v-trade-other": "कुछ और",
 }
 
+# Bhojpuri: DRAFT wording, to be checked and re-recorded by a native speaker before any
+# real caller hears it. Anything missing here is played in Hindi (the IVR falls back).
+BASE_BHO = {
+    "welcome": "प्रणाम। ई पीएम अजय के ओर से हुनर सहायता सेवा बा। कबो साथी से बात करे खातिर हैश दबाईं।",
+    "consent": ("हमनी रउआ से रउआ काम आ पढ़ाई के बारे में सात गो सवाल पूछब, ताकि सही कोर्स बता सकीं। "
+                "रउआ आवाज़ रिकॉर्ड ना रखल जाई। का रउआ तइयार बानी? हँ खातिर एक, ना खातिर दू दबाईं, भा बोलीं।"),
+    "q0": "रउआ कवना ज़िला से बोलत बानी?",
+    "q1": "रउआ कहाँ ले पढ़ाई कइले बानी?",
+    "q2": "रउआ परिवार के पुश्तैनी काम का ह?",
+    "q2_years": "ई काम रउआ केतना साल से करत बानी?",
+    "q3": "अभी रउआ का काम करत बानी?",
+    "q4": "रउआ कवन काम आवेला, भा का सीखे के चाहत बानी?",
+    "q5": "आवे-जाए में, भा देह से, कवनो दिक्कत बा? भा घर के कवनो जिम्मेदारी?",
+    "q6": "रउआ आपन काम शुरू करे के चाहब, भा नौकरी?",
+    "q7": "रउआ इलाका में कवना काम के सबसे ज्यादा माँग बा?",
+    "reask": "माफ करीं, हम ठीक से ना समझनी। एक बेर फेर से बताईं।",
+    "you_said": "रउआ कहनी,",
+    "is_right": "ठीक बा? हँ खातिर एक, ना खातिर दू।",
+    "ack": "ठीक बा।",
+    "help_queued": "ठीक बा, हमनी के साथी रउआ के जल्दी फोन करिहें। तब ले चाहीं त बात जारी राखीं।",
+    "goodbye": "कवनो सवाल खातिर एही नंबर पर फेर फोन करीं। प्रणाम।",
+}
+
 YEARS_DTMF = {"1": 0, "2": 2, "3": 4, "4": 5, "5": 10}
 _NUM_HI = ["शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ"]
 
@@ -96,8 +121,11 @@ def district_menu_hi() -> str:
 
 @lru_cache(maxsize=None)
 def catalogue(lang: str = "hi") -> dict:
+    """Hindi: every prompt. Other languages: only what differs; channels fall back to Hindi."""
+    if lang == "bho":
+        return dict(BASE_BHO)
     if lang != "hi":
-        raise KeyError(lang)                 # new language = a BASE_<lang> dict + lexicon labels
+        raise KeyError(lang)                 # new language = a BASE_<lang> dict + lexicon surfaces
     c = dict(BASE_HI)
     for t in lexicon()["trades"]:
         c[f"v-trade-{t['id'].lower()}"] = t["hi"]

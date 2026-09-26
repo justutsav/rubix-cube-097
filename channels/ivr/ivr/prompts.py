@@ -23,8 +23,9 @@ def load(root: Path = DIR) -> dict[tuple[str, str], bytes]:
 
 
 def resolve(bank: dict, prompt_id: str, lang: str) -> bytes | None:
-    """'q4' or 'q4.hi' or 'q4.hi.v3' -> PCM; None if we do not have it."""
+    """'q4' or 'q4.hi' or 'q4.bho.v3' -> PCM (Hindi if that language lacks it); None if missing."""
     parts = prompt_id.split(".")
-    if len(parts) > 1 and len(parts[1]) == 2:
+    if len(parts) > 1 and len(parts[1]) in (2, 3):
         lang = parts[1]
-    return bank.get((lang, parts[0]))
+    # a language records only what differs from Hindi; everything else plays in Hindi
+    return bank.get((lang, parts[0])) or bank.get(("hi", parts[0]))

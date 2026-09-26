@@ -1,6 +1,6 @@
 {
- "version": "2026-09-26.2",
- "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json.",
+ "version": "2026-09-26.3",
+ "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
    "id": "TAILORING",
@@ -16,7 +16,8 @@
     "darzi",
     "tailor",
     "tailoring",
-    "sewing"
+    "sewing",
+    "सिलाई के काम"
    ],
    "sectors": [
     "Apparel",
@@ -98,7 +99,10 @@
     "kisan",
     "farming",
     "farmer",
-    "agriculture"
+    "agriculture",
+    "खेती-बारी",
+    "खेती बारी",
+    "खेती करीले"
    ],
    "sectors": [
     "Agriculture"
@@ -134,7 +138,9 @@
     "pashupalan",
     "goat",
     "poultry",
-    "cattle"
+    "cattle",
+    "गाय-भैंस",
+    "बकरी पालीले"
    ],
    "sectors": [
     "Agriculture"
@@ -166,7 +172,8 @@
     "mason",
     "construction",
     "राजगीर",
-    "rajgir"
+    "rajgir",
+    "मिस्त्री के काम"
    ],
    "sectors": [
     "Construction"
@@ -639,7 +646,10 @@
     "mazdoori",
     "labour",
     "labor",
-    "daily wage"
+    "daily wage",
+    "मजूरी",
+    "मजूरी करीले",
+    "मजदूरी करीले"
    ],
    "sectors": [],
    "keywords": [],
@@ -658,7 +668,10 @@
     "nothing",
     "no work",
     "unemployed",
-    "housewife"
+    "housewife",
+    "कुछु ना",
+    "कवनो काम ना",
+    "कवनो काम नइखे"
    ],
    "sectors": [],
    "keywords": [],
@@ -686,7 +699,10 @@
    "sahi",
    "theek",
    "ok",
-   "okay"
+   "okay",
+   "हँ",
+   "हँ जी",
+   "ठीक बा"
   ],
   "no": [
    "नहीं",
@@ -700,7 +716,10 @@
    "na",
    "no",
    "galat",
-   "wrong"
+   "wrong",
+   "नाहीं",
+   "ना जी",
+   "गलत बा"
   ]
  },
  "education": {
@@ -716,7 +735,9 @@
      "अंगूठा",
      "anpadh",
      "illiterate",
-     "no schooling"
+     "no schooling",
+     "पढ़ल नइखी",
+     "ना पढ़नी"
     ]
    },
    {
@@ -739,7 +760,9 @@
      "प्राइमरी",
      "5th",
      "paanchvi",
-     "primary"
+     "primary",
+     "पाँचवाँ",
+     "पांचवां"
     ]
    },
    {
@@ -750,7 +773,9 @@
      "मिडिल",
      "8th",
      "aathvi",
-     "middle"
+     "middle",
+     "आठवाँ",
+     "आठवां"
     ]
    },
    {
@@ -773,7 +798,9 @@
      "10th",
      "dasvi",
      "matric",
-     "high school"
+     "high school",
+     "दसवाँ",
+     "दसवां"
     ]
    },
    {
@@ -793,7 +820,9 @@
      "इंटरमीडिएट",
      "12th",
      "barahvi",
-     "inter"
+     "inter",
+     "बारहवाँ",
+     "बारहवां"
     ]
    },
    {
@@ -842,7 +871,9 @@
    "कोई दिक्कत नहीं",
    "कोई नहीं",
    "सब ठीक",
-   "no problem"
+   "no problem",
+   "कवनो दिक्कत नइखे",
+   "कवनो दिक्कत ना"
   ],
   "distance": [
    "दूर नहीं जा सकती",
@@ -856,7 +887,9 @@
    "नहीं जा सकती",
    "नहीं जा सकता",
    "जा नहीं सकती",
-   "जा नहीं सकता"
+   "जा नहीं सकता",
+   "दूर ना जा सकीले",
+   "दूर ना जा सकेनी"
   ],
   "physical": [
    "विकलांग",
@@ -870,7 +903,8 @@
    "चल नहीं",
    "बीमार",
    "disabled",
-   "handicap"
+   "handicap",
+   "गोड़"
   ],
   "care_duty": [
    "बच्चे",
@@ -880,7 +914,10 @@
    "बुजुर्ग की देखभाल",
    "घर की जिम्मेदारी",
    "children",
-   "family duty"
+   "family duty",
+   "लइका",
+   "लइकन",
+   "घर सँभारे के"
   ],
   "cognitive": [
    "मानसिक",
@@ -907,7 +944,8 @@
    "apna kaam",
    "khud",
    "business",
-   "self"
+   "self",
+   "आपन काम"
   ],
   "wage": [
    "नौकरी",
@@ -917,7 +955,8 @@
    "जॉब",
    "naukri",
    "job",
-   "salary"
+   "salary",
+   "नौकरी चाहीं"
   ],
   "either": [
    "दोनों",
@@ -927,7 +966,9 @@
    "dono",
    "kuch bhi",
    "any",
-   "either"
+   "either",
+   "कुछुओ",
+   "कुछो"
   ],
   "dtmf": {
    "1": "self",
@@ -961,6 +1002,7 @@
   "पच्चीस": 25,
   "तीस": 30,
   "चालीस": 40,
-  "बचपन": 10
+  "बचपन": 10,
+  "दू": 2
  }
 }
