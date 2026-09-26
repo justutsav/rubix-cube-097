@@ -1,0 +1,425 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens — see docs/DESIGN.md for the three iterations and why iterations 1 and 2 were
+  rejected. Plum and beige are the given pair; amber and teal are the functional accents, chosen
+  because plum cannot be both the brand and the "active" state, beige has no states at all, and
+  amber/teal stays distinguishable under every common form of colour blindness where green/red
+  does not.
+
+  Two registers share this one file:
+    A "Big Voice"  — beneficiary and doorstep. Full-bleed, one action, ≥56px targets, AAA contrast.
+    B "Dense Plum" — officer console. Cards, tables, charts. Density is correct there.
+*/
+
+@theme {
+  --color-plum-900: #2a0e27;
+  --color-plum-800: #3b1436;
+  --color-plum-700: #5b2150;
+  --color-plum-600: #7a2e6c;
+  --color-plum-500: #9a4a8b;
+  --color-plum-300: #c89bbe;
+  --color-plum-100: #f3e4ef;
+
+  --color-beige-50: #fbf7f0;
+  --color-beige-100: #f7f1e7;
+  --color-beige-200: #efe5d5;
+  --color-beige-300: #e0d2bc;
+
+  --color-sand-700: #8a7a63;
+  --color-sand-900: #4a4034;
+
+  --color-amber-500: #d98324;
+  --color-amber-600: #b56a17;
+  --color-amber-100: #fbebd7;
+
+  --color-teal-600: #0f766e;
+  --color-teal-100: #d7ede9;
+
+  --color-rose-600: #b3261e;
+  --color-rose-100: #fbe4e2;
+
+  --font-sans: 'Inter var', 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif;
+
+  --text-display: 2.125rem; /* 34 */
+  --text-title: 1.625rem;   /* 26 */
+  --text-lead: 1.375rem;    /* 22 */
+  --text-body: 1.25rem;     /* 20 */
+  --text-bodysm: 1.0625rem; /* 17 */
+  --text-label: 0.9375rem;  /* 15 */
+
+  /* phone / tablet-kiosk / desktop. The tablet tier is not decoration: the kiosk at a panchayat
+     bhavan is a tablet on a stand, and it is a first-class surface, not a stretched phone. */
+  --breakpoint-kiosk: 40rem;
+  --breakpoint-desk: 64rem;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Stops a double-tap on a big button being read as a zoom gesture in the WebView. */
+    touch-action: manipulation;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-beige-50);
+    color: var(--color-plum-900);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.5;
+    /* Capacitor: keep content clear of the notch and the gesture bar. */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    overscroll-behavior-y: none;
+  }
+
+  /* Devanagari renders visually smaller than Latin at the same px. Nudge it back. */
+  :lang(hi),
+  :lang(bho),
+  :lang(mag),
+  :lang(raj),
+  :lang(cgh) {
+    font-size: 1.08em;
+    line-height: 1.6;
+  }
+
+  /* Focus is never removed. 3px amber reads on both plum and beige. */
+  :focus-visible {
+    outline: 3px solid var(--color-amber-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Nothing on the interview path animates. A spinner during a voice turn reads as a dead line. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------- Register A: Big Voice */
+
+  .a-screen {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-beige-50);
+  }
+
+  /* The active question is a full-bleed plum surface, not a card on a page. At 13.9:1 against
+     beige it is the only thing that survives direct sunlight on a ₹6,000 screen. */
+  .a-stage {
+    background: var(--color-plum-800);
+    color: var(--color-beige-50);
+    padding: 1.5rem 1.25rem 2rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .a-question {
+    font-size: var(--text-title);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  /* When the question itself is a <Speak>, the play control sits beside it rather than under a
+     duplicate copy of the same sentence. */
+  .speak.a-question > div {
+    font-size: var(--text-title);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .speak.a-question .speak-btn {
+    margin-top: 4px;
+  }
+
+  @media (width >= 40rem) {
+    .a-question {
+      font-size: 2rem;
+    }
+    .a-stage {
+      padding: 2.5rem 3rem 3rem;
+    }
+  }
+
+  @media (width >= 64rem) {
+    /* Desktop keeps the one-action rule; it just stops the line length running away. */
+    .a-stage > * {
+      max-width: 44rem;
+      margin-inline: auto;
+      width: 100%;
+    }
+  }
+
+  /* Primary action lives in the bottom third, inside the thumb arc, always in the same place. */
+  .a-actions {
+    padding: 1rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+    display: grid;
+    gap: 0.75rem;
+    background: var(--color-beige-100);
+    border-top: 1px solid var(--color-beige-200);
+  }
+
+  .a-actions[data-layout='grid'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (width >= 40rem) {
+    .a-actions {
+      padding: 1.5rem 3rem 2rem;
+    }
+    .a-actions[data-layout='grid'] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .a-btn {
+    min-height: 3.5rem; /* 56px floor, register A */
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1.125rem;
+    border-radius: 0.875rem;
+    border: 2px solid var(--color-beige-300);
+    background: #fff;
+    text-align: left;
+    font-size: var(--text-bodysm);
+    font-weight: 550;
+    cursor: pointer;
+  }
+
+  .a-btn:active {
+    transform: translateY(1px);
+  }
+
+  .a-btn[data-variant='primary'] {
+    background: var(--color-plum-700);
+    border-color: var(--color-plum-700);
+    color: #fff;
+    justify-content: center;
+    font-size: var(--text-body);
+  }
+
+  .a-btn[data-variant='confirm'] {
+    background: var(--color-teal-600);
+    border-color: var(--color-teal-600);
+    color: #fff;
+    justify-content: center;
+  }
+
+  .a-btn[data-selected='true'] {
+    border-color: var(--color-plum-600);
+    background: var(--color-plum-100);
+  }
+
+  .a-btn-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex: none;
+  }
+
+  /* The mic is the hero and never moves. 96px. */
+  .a-mic {
+    width: 6rem;
+    height: 6rem;
+    border-radius: 999px;
+    border: 4px solid var(--color-plum-700);
+    background: var(--color-plum-700);
+    color: #fff;
+    font-size: 2.25rem;
+    display: grid;
+    place-items: center;
+    margin-inline: auto;
+    cursor: pointer;
+  }
+
+  .a-mic[data-listening='true'] {
+    background: var(--color-rose-600);
+    border-color: var(--color-rose-600);
+    /* The one permitted animation: it tells her the machine is hearing her. */
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(179 38 30 / 45%); }
+    50% { box-shadow: 0 0 0 14px rgb(179 38 30 / 0%); }
+  }
+
+  /* ---------------------------------------------------------------- Register B: Dense Plum */
+
+  .b-shell {
+    min-height: 100dvh;
+    background: var(--color-beige-50);
+  }
+
+  .b-head {
+    background: var(--color-plum-800);
+    color: var(--color-beige-50);
+    padding: 1rem 1.25rem;
+  }
+
+  .b-main {
+    padding: 1rem;
+    display: grid;
+    gap: 1rem;
+    max-width: 88rem;
+    margin-inline: auto;
+  }
+
+  @media (width >= 40rem) {
+    .b-main { padding: 1.5rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .b-main > .b-wide { grid-column: 1 / -1; }
+  }
+
+  @media (width >= 64rem) {
+    .b-main { padding: 2rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  .b-card {
+    background: #fff;
+    border: 1px solid var(--color-beige-200);
+    border-radius: 0.875rem;
+    padding: 1rem 1.125rem;
+  }
+
+  .b-card h2 {
+    font-size: var(--text-label);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-sand-700);
+    margin: 0 0 0.625rem;
+    font-weight: 650;
+  }
+
+  .b-btn {
+    min-height: 2.75rem; /* 44px floor, register B */
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.625rem;
+    border: 1px solid var(--color-plum-700);
+    background: var(--color-plum-700);
+    color: #fff;
+    font-size: var(--text-bodysm);
+    font-weight: 550;
+    cursor: pointer;
+  }
+
+  .b-btn[data-variant='ghost'] {
+    background: #fff;
+    color: var(--color-plum-700);
+  }
+
+  .b-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-bodysm);
+  }
+
+  .b-table th {
+    text-align: left;
+    font-size: var(--text-label);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-sand-700);
+    border-bottom: 1px solid var(--color-beige-200);
+    padding: 0.5rem 0.5rem 0.5rem 0;
+  }
+
+  .b-table td {
+    padding: 0.5rem 0.5rem 0.5rem 0;
+    border-bottom: 1px solid var(--color-beige-100);
+    vertical-align: top;
+  }
+
+  /* ---------------------------------------------------------------- shared */
+
+  /* Status is never colour alone: every chip carries an icon and a word. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    font-size: var(--text-label);
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .chip[data-tone='eligible'] { background: var(--color-teal-100); color: #0b5b55; border-color: #9cccc6; }
+  .chip[data-tone='near'] { background: var(--color-amber-100); color: #8a5010; border-color: #e6bd86; }
+  .chip[data-tone='out'] { background: var(--color-rose-100); color: #8c1d17; border-color: #e8afab; }
+  .chip[data-tone='info'] { background: var(--color-plum-100); color: var(--color-plum-800); border-color: var(--color-plum-300); }
+  .chip[data-tone='neutral'] { background: var(--color-beige-100); color: var(--color-sand-900); border-color: var(--color-beige-300); }
+
+  /* Provenance and offline state are persistent bands, never toasts. A mobiliser has to know
+     before she starts, and a jury has to see that prototype data is labelled as such. */
+  .band {
+    padding: 0.625rem 1rem;
+    font-size: var(--text-bodysm);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 550;
+  }
+
+  .band[data-tone='warn'] { background: var(--color-amber-100); color: #7a4510; border-bottom: 2px solid var(--color-amber-500); }
+  .band[data-tone='bad'] { background: var(--color-rose-100); color: #8c1d17; border-bottom: 2px solid var(--color-rose-600); }
+  .band[data-tone='ok'] { background: var(--color-teal-100); color: #0b5b55; border-bottom: 2px solid var(--color-teal-600); }
+
+  /* Seven beads, not "Question 4 of 7" — it has to be legible without reading. */
+  .beads {
+    display: flex;
+    gap: 0.375rem;
+    align-items: center;
+  }
+
+  .bead {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 999px;
+    border: 2px solid var(--color-plum-300);
+  }
+
+  .bead[data-state='done'] { background: var(--color-teal-600); border-color: var(--color-teal-600); }
+  .bead[data-state='current'] { background: var(--color-amber-500); border-color: var(--color-amber-500); transform: scale(1.35); }
+  .bead[data-state='deferred'] { background: transparent; border-color: var(--color-amber-500); border-style: dashed; }
+
+  .speak {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+
+  .speak-btn {
+    flex: none;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    background: transparent;
+    color: inherit;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    font-size: 1.125rem;
+  }
+
+  .muted { color: var(--color-sand-700); font-size: var(--text-bodysm); }
+  .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.875rem; }
+}

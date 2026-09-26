@@ -1,0 +1,16 @@
+{
+  "name": "@rc097/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interview FSM, extraction ladder, eligibility gate and recommender. No channel knows this exists.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./data/*": "./src/data/*"
+  },
+  "scripts": {
+    "test": "tsx test/selfcheck.ts"
+  }
+}

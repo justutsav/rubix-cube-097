@@ -1,0 +1,27 @@
+{
+  "name": "rubix-cube-097",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SIH 2026 PS 26097 - voice livelihood assistant for PM-AJAY GIA",
+  "workspaces": [
+    "packages/*",
+    "web/app",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @rc097/app",
+    "build": "npm run build --workspace @rc097/app",
+    "preview": "npm run preview --workspace @rc097/app",
+    "test": "npm run test --workspace @rc097/core",
+    "telephony": "npm run dev --workspace @rc097/telephony",
+    "diagram": "python3 scripts/build_diagram.py"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "devDependencies": {
+    "supabase": "^2.118.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

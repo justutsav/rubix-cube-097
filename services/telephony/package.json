@@ -1,0 +1,21 @@
+{
+  "name": "@rc097/telephony",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Exotel AgentStream WebSocket adapter + Meta WhatsApp Cloud API webhook. Thin transports over one core.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "echo": "tsx src/echobot.ts",
+    "simulate": "tsx src/simulate.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2"
+  }
+}

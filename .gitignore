@@ -11,6 +11,21 @@ node_modules/
 .env.*
 !.env.example
 
+# Credentials pasted in as loose files. A Supabase personal access token arrived in this
+# repo as `supbase-access-token.txt` on 2026-09-26 — untracked, but nothing stopped the
+# next `git add -A`. It now lives in ~/.config/rc097/ (mode 600) and never in the tree.
+# Match the family, not the one filename somebody used.
+*token*.txt
+*token*.json
+*secret*
+*credential*
+*.pem
+*.key
+!packages/**/*.key.ts
+service-account*.json
+supabase/.temp/
+.supabase/
+
 .DS_Store
 .next/
 dist/

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PM-AJAY livelihood assistant">
+  <rect width="512" height="512" rx="96" fill="#3b1436"/>
+  <!-- A mouth speaking, not a microphone: the product is a conversation, and a mic icon reads as
+       "recording", which is the one thing this system does not do. -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#f7f1e7" stroke-width="22"/>
+  <path d="M176 232c26-30 54-30 80 0s54 30 80 0" fill="none" stroke="#d98324" stroke-width="26" stroke-linecap="round"/>
+  <path d="M176 300c26 30 54 30 80 0s54-30 80 0" fill="none" stroke="#0f766e" stroke-width="26" stroke-linecap="round"/>
+</svg>

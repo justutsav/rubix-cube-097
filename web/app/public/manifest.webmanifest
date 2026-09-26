@@ -1,0 +1,16 @@
+{
+  "name": "PM-AJAY Livelihood Assistant",
+  "short_name": "PM-AJAY",
+  "description": "Voice livelihood assistant for PM-AJAY GIA — works offline",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fbf7f0",
+  "theme_color": "#3b1436",
+  "lang": "hi",
+  "categories": ["government", "education", "utilities"],
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

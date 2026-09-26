@@ -46,6 +46,50 @@ in that district's Annual Action Plan.
 `channels/` and `web/` call `ai/` over HTTP. Do not import across that line, and do not put
 a copy of the seven questions in any channel — there is exactly one FSM.
 
+## Layout, as built
+
+| Path | What | State |
+|---|---|---|
+| `packages/core/` | The interview engine: FSM, extraction ladder, NSQF table, eligibility gate, recommender, prompt registry. Zero dependencies, zero IO | **56 self-checks pass** (`npm test`) |
+| `web/app/` | React + Vite PWA, wrapped by Capacitor for Android. Beneficiary interview, chat, my-plan, mobiliser call list, officer console, settings | **Runs on a handset** |
+| `services/telephony/` | Exotel AgentStream WebSocket adapter + Meta WhatsApp webhook | **Full interview passes over the real wire protocol** (`npm run simulate -w @rc097/telephony`) |
+| `supabase/` | Postgres schema with RLS, plus `turn` and `identity` edge functions | Migration written; **not yet applied** |
+| `scripts/` | `supabase_admin.py` (schema/seed/demo), `import_nqr.py` (official register), `build_diagram.py` | |
+
+## Run it
+
+```bash
+npm install
+npm test                              # core engine, 56 assertions
+npm run dev                           # app at localhost:5173
+npm run simulate -w @rc097/telephony  # scripted IVR call, no Exotel account needed
+```
+
+Android:
+
+```bash
+cd web/app && npx cap sync android && cd android && ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+## What is honest about this build
+
+Every one of these is enforced in code, not promised in a document:
+
+- **No invented QP codes.** The prototype catalogue carries `qp_code: null` and
+  `source: PROTOTYPE_PENDING_NQR_IMPORT`; the UI shows an amber band on every recommendation until
+  `scripts/import_nqr.py` has run. A self-check fails if any row claims a code it does not have.
+- **The transcript cannot outlive confirmation.** A Postgres `CHECK` constraint — and the same
+  constraint in the on-device SQLite DDL — makes it impossible to store a raw transcript against a
+  confirmed answer. Audio is never written at all.
+- **Unsourced opportunity rows are labelled and excluded.** `PLACEHOLDER_NEEDS_SOURCING` shows as a
+  red band in the officer console and is kept out of the Perspective Plan export.
+- **R2 and R7 are marked PARTIAL,** computed and rendered in the app, because the dialect
+  measurement and the native-speaker prompt pass do not exist yet.
+- **PM-DAKSH routing refuses to guess an age** no PS field asks for, and says `age_unknown` instead.
+
 ## Status
 
-Scoping. Nothing built yet.
+Working end to end on a real handset: speaks, listens, extracts, gates on NSQF, recommends, and
+stores offline. See `docs/CHANNELS-SETUP.md` for what has to happen before a real phone number or
+WhatsApp number can be dialled.
