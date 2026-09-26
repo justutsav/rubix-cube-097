@@ -221,6 +221,11 @@ class Flow:
                 return self._advance(None)
             self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
             return
+        spoken = extract.spoken_digits(inp.nbest) if inp.kind in ("audio", "text") and inp.nbest else ""
+        if len(spoken) >= 4:                                   # "एक दो तीन चार" / "1234" works too
+            self.st.set_beneficiary(self.bid, pin_hash=self.st.pin_hash(self.bid, spoken[:4]))
+            self.say = ["pin_saved"]
+            return self._advance(None)
         st["tries"] += 1
         if st["tries"] >= 2:                                   # no PIN: interview goes on, just not resumable
             self.say = ["ack"]
@@ -283,10 +288,17 @@ class Flow:
         got = spec["extract"](inp.nbest) if inp.nbest else None
         if got is None and inp.nbest:
             got = llm.classify(field, inp.nbest)
-        if got is None and field == "q5" and inp.nbest and (extract.yes_no(inp.nbest) or ("",))[0] == "yes":
-            return self._menu()                    # "हाँ, दिक्कत है" — which one? the menu asks
+        if (got is None and st["mode"] == "ask" and inp.nbest and extract.yes_no(inp.nbest)
+                and len(extract.norm(inp.nbest[0]).split()) <= 3):
+            # a bare "हाँ"/"नहीं" to an open question ("what do you want to learn?") is not a wrong
+            # answer, it means "I didn't catch the question": offer the choices, no scolding, no try used
+            return self._menu()
         if got:
             value, conf, method = got
+            if field == "q5" and value == "none" and extract.yes_no(inp.nbest):
+                # "कोई परेशानी है?" → "नहीं" is already a direct answer; reading it back
+                # ("…नहीं, सही है?" → "नहीं") turned into a double negative on real calls
+                return self._accept(value, conf, method)
             cand = {"value": _normalise(field, value, inp.nbest), "conf": conf, "method": method}
             if field == "q2" and value not in ("NONE", "OTHER"):
                 yrs = extract.years(inp.nbest)                 # "बारह साल से बुनाई" answers two fields

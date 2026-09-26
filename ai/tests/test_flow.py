@@ -186,3 +186,25 @@ def test_asking_to_repeat_repeats_without_using_a_try(caller):
     assert c.ids(c.say("एक बार वापस से बोलना।")) == ["q0"]
     assert c.ids(c.say("समझ नहीं आया")) == ["q0"]
     assert c.ids(c.say("कुछ भी नहीं समझ")) == ["reask", "q0"]          # still the first real miss
+
+
+def test_bare_yes_to_an_open_question_offers_the_menu(caller):
+    c = caller
+    consent_and_pin(c)
+    c.key("1")                                              # q0 -> q1
+    assert c.ids(c.say("हाँ।")) == ["q1_menu"]
+
+
+def test_plain_no_to_any_difficulty_is_accepted_without_readback(caller):
+    c = caller
+    consent_and_pin(c)
+    for d in ["1", "3", "1", "5", "1", "4"]:
+        c.key(d)
+    assert c.ids(c.say("नहीं।"))[:2] == ["ack", "q6"]
+
+
+def test_spoken_menu_digits_and_spoken_pin(client):
+    c = Caller(client)
+    c.turn("opened")
+    assert c.ids(c.say("एक।")) == ["pin_set"]                  # "हाँ के लिए एक" said aloud
+    assert c.ids(c.say("एक दो तीन चार।")) == ["pin_saved", "q0"]

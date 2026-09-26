@@ -130,7 +130,7 @@ def catalogue(lang: str = "hi") -> dict:
     for t in lexicon()["trades"]:
         c[f"v-trade-{t['id'].lower()}"] = t["hi"]
     for d in districts():
-        c[f"v-dist-{d['id'].lower()}"] = d["hi"]
+        c[f"v-dist-{d['id'].lower()}"] = f"{d['hi']} ज़िला"      # "गया" alone also means "went"
     c["v-dist-other"] = "दूसरा ज़िला"
     for y in range(0, 41):
         c[f"v-years-{y}"] = "एक साल से कम" if y == 0 else f"{y} साल"

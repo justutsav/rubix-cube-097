@@ -1,5 +1,5 @@
 {
- "version": "2026-09-26.6",
+ "version": "2026-09-26.7",
  "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
@@ -702,7 +702,9 @@
    "okay",
    "हँ",
    "हँ जी",
-   "ठीक बा"
+   "ठीक बा",
+   "एक",
+   "1"
   ],
   "no": [
    "नहीं",
@@ -719,7 +721,9 @@
    "wrong",
    "नाहीं",
    "ना जी",
-   "गलत बा"
+   "गलत बा",
+   "दो",
+   "2"
   ]
  },
  "education": {
