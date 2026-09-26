@@ -22,7 +22,7 @@ log = logging.getLogger("engine")
 PROVIDER = os.environ.get("TTS_PROVIDER", "piper")
 PIPER_DIR = Path(__file__).resolve().parent.parent / ".cache" / "piper"
 PIPER_VOICE = os.environ.get("PIPER_VOICE", "hi_IN-priyamvada-medium")
-PIPER_LENGTH_SCALE = float(os.environ.get("PIPER_LENGTH_SCALE", 0.85))   # 1.0 is slow on the phone
+PIPER_LENGTH_SCALE = float(os.environ.get("PIPER_LENGTH_SCALE", 1.0))   # 0.85 was too fast on real calls
 SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
 SARVAM_MODEL = os.environ.get("SARVAM_TTS_MODEL", "bulbul:v3")      # v2 was retired in 2026
 SARVAM_SPEAKER = os.environ.get("SARVAM_TTS_SPEAKER")                # unset = Sarvam's default voice

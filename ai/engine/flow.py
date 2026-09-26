@@ -414,6 +414,10 @@ class Flow:
             if key is not None:
                 return self._field(Input("dtmf", digits=key))
         got = spec["extract"](inp.nbest) if inp.nbest else None
+        if (got is None and st["mode"] == "ask" and inp.nbest and extract.leftover_confirmation(inp.nbest)):
+            self.say = []                                  # "हाँ, सही है" said twice to the last read-back:
+            self.state["last_said_keep"] = True            # not an answer to this question, keep listening
+            return
         if (got is None and st["mode"] == "ask" and inp.nbest and extract.yes_no(inp.nbest)
                 and len(extract.norm(inp.nbest[0]).split()) <= 3):
             # a bare "हाँ"/"नहीं" to an open question ("what do you want to learn?") is not a wrong

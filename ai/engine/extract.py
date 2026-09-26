@@ -205,6 +205,13 @@ def spoken_key(nbest) -> str | None:
     return {norm(k): v for k, v in _KEY_WORDS.items()}.get(w)
 
 
+def leftover_confirmation(nbest) -> bool:
+    """'हाँ सही है', 'जी ठीक है' at the start of a new question: an echo of the previous read-back."""
+    words = norm(nbest[0]).split() if nbest else []
+    return 0 < len(words) <= 4 and any(w in ("सही", "ठीक", "बिल्कुल") for w in words) and \
+        (yes_no(nbest) or ("",))[0] == "yes"
+
+
 def wants_repeat(nbest) -> bool:
     """'फिर से बोलिए', 'समझ नहीं आया' … Only close matches: this skips an answer, so no guessing."""
     ranked = best_over(tables()["repeat"], nbest[:1])

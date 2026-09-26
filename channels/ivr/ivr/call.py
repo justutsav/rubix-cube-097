@@ -64,7 +64,7 @@ class Call:
         self.done = False              # no more input: goodbye queued
         self.engine_done = False       # ai/ itself ended the session
         self.finished = False          # goodbye heard: hang up
-        self.no_input_frames = _ms("NO_INPUT_TIMEOUT_MS", 6000) // 20
+        self.no_input_frames = _ms("NO_INPUT_TIMEOUT_MS", 8000) // 20
         # 120 ms cut every prompt on a real line; 400 ms still cut questions on "हाँ जी"/"अच्छा",
         # which Hindi speakers say while listening. Only a real attempt to talk interrupts.
         self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 900)

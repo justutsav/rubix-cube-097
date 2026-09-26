@@ -245,3 +245,12 @@ def test_warm_replies_and_progress_cues(caller):
     assert c.ids(c.key("5"))[0] == "emp_experience"                  # 10+ years
     ids = c.ids(c.key("1"))                                          # q3 -> q4
     assert ids[-2:] == ["progress_half", "q4"]
+
+
+def test_leftover_yes_after_a_readback_is_not_an_answer(caller):
+    c = caller
+    consent(c)
+    c.say("गया")
+    c.say("हाँ")                                              # confirm q0 -> q1 asked
+    j = c.say("हाँ सही है")                                    # said twice; lands on q1
+    assert c.ids(j) == [] and j["state"] == "FIELD:q1:ask"

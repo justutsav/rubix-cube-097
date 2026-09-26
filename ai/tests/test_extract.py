@@ -40,6 +40,7 @@ from engine import extract as x
     ("years", "5 साल।", 5),
     ("trade", "खेती।", "FARMING"),
     ("mobility", "आने जाने में दिक्कत है।", "distance"),
+    ("trade", "मैं कुक बनना चाहूँगा", "COOKING"),
     ("education", "बस तीसरी चौथी तक", {"class": 0, "literate": True}),   # below 5th: reads/writes
     ("education", "3 तक पढ़ा", {"class": 0, "literate": True}),
 ])

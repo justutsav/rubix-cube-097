@@ -19,7 +19,7 @@ def _env(name, default):
 class Endpointer:
     def __init__(self):
         self.vad = webrtcvad.Vad(_env("VAD_AGGRESSIVENESS", 2))
-        self.silence_frames = _env("ENDPOINT_SILENCE_MS", 240) // 20
+        self.silence_frames = _env("ENDPOINT_SILENCE_MS", 800) // 20   # 240 cut callers mid-sentence when they paused to think
         self.min_frames = _env("MIN_UTTERANCE_MS", 250) // 20
         self.max_frames = _env("MAX_UTTERANCE_MS", 15000) // 20
         self.reset()

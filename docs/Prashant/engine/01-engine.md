@@ -115,7 +115,7 @@ re-ask and the keypad.
 
 **Voice:** Piper (free, offline, runs on the laptop CPU, ~40x faster than real time),
 Hindi voice `priyamvada` (female, matching the prompts' feminine grammar) at
-`PIPER_LENGTH_SCALE=0.85`. All 168 prompts re-record in ~7 s at no cost; live replies (result,
+`PIPER_LENGTH_SCALE=1.0` (0.85 was too fast for callers). All 168 prompts re-record in ~7 s at no cost; live replies (result,
 AI answers) are made on the machine in ~0.2 s. Sarvam Bulbul stays available
 (`TTS_PROVIDER=sarvam`) for a demo where quality matters most. **Licence:** the `priyamvada`
 and `pratham` voices are trained on CC BY-NC-SA 4.0 data (non-commercial), `rohan` on the IIT

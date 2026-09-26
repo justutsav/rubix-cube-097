@@ -1,5 +1,5 @@
 {
- "version": "2026-09-26.8",
+ "version": "2026-09-26.9",
  "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
@@ -471,7 +471,13 @@
     "cook",
     "cooking",
     "halwai",
-    "catering"
+    "catering",
+    "कुक",
+    "रसोइया",
+    "शेफ",
+    "खाना बनाने",
+    "खाना बनाने का काम",
+    "chef"
    ],
    "sectors": [
     "Tourism & Hospitality",
