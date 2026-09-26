@@ -68,24 +68,35 @@ tools anywhere. Resampling is **not** here — `ai/` owns it with speech-to-text
 
 ---
 
-## 4. Configuration (`.env`)
+## 4. Configuration (`channels/ivr/.env`, gitignored, read at start-up)
 
 ```
-EXOTEL_SID=              # account SID
-EXOTEL_API_KEY=
-EXOTEL_API_TOKEN=
-EXOTEL_SUBDOMAIN=api.exotel.com
-EXOTEL_CALLER_ID=        # our number shown on the callback
-EXOTEL_STREAM_URL=       # wss://<public host>/stream?token=<STREAM_TOKEN>, used by the callback
-ENGINE_URL=http://localhost:8001    # ai/ service
-ENGINE_TIMEOUT_MS=1500
-PHONE_PEPPER=            # secret for HMAC of phone numbers; same value as ai/
-DEFAULT_LANG=hi
-VAD_AGGRESSIVENESS=2     # 0–3; tuned in testing
+# Security
+STREAM_TOKEN=            # required on the public stream (§5.1); unset = open, local only
+PHONE_PEPPER=            # HMAC secret for phone numbers; same value as ai/
+MISSED_CALL_SECRET=      # ?key= on the missed-call webhook
+# Engine
+ENGINE_URL=http://localhost:8001
+ENGINE_TIMEOUT_MS=4000   # > engine worst case (Sarvam 2 s + Vosk fallback); was 1500, ended calls
+TTS_TIMEOUT_MS=6000
+# Listening — tuned on real Exotel calls (05-measurements.md)
+VAD_AGGRESSIVENESS=2
 ENDPOINT_SILENCE_MS=240
-BARGE_IN_SPEECH_MS=120   # speech needed during playback before we cut it
+MIN_UTTERANCE_MS=250
+MAX_UTTERANCE_MS=15000
+BARGE_IN_SPEECH_MS=900   # 120 cut every prompt on line noise; 400 still cut questions on "हाँ जी"
+BARGE_IN_GRACE_MS=4000   # no barge-in at call start: Exotel's "this call is being recorded"
 NO_INPUT_TIMEOUT_MS=6000
+FILLER_AFTER_MS=1000     # "hmm" only after 1 s; Sarvam often takes 0.7-0.8 s
 MAX_CALL_SECONDS=600
+# Callback (Exotel calls the user)
+EXOTEL_SID= / EXOTEL_API_KEY= / EXOTEL_API_TOKEN=
+EXOTEL_SUBDOMAIN=api.in.exotel.com
+EXOTEL_CALLER_ID=        # our ExoPhone
+EXOTEL_STREAM_URL=       # wss://<public host>/stream?token=<STREAM_TOKEN>
+# Test calls only — never in production (they store audio / what was said)
+SOFTPHONE=1              # serve /softphone
+IVR_DEBUG_DIR=           # save each caller utterance as WAV
 ```
 
 Every threshold is config, because the right numbers only come out of real calls.
@@ -96,14 +107,21 @@ Every threshold is config, because the right numbers only come out of real calls
 
 ### 5.1 Exotel → us (WebSocket `/stream`)
 
-From spec §3.2. We handle: `connected`, `start` (stream_sid, call_sid, from, to,
-media_format), `media` (base64 16-bit PCM, 8 kHz, mono), `dtmf` (digit), `stop`.
-Unknown events are logged and ignored, never crash the call.
+We handle: `connected`, `start` (stream_sid, call_sid, from, to, media_format,
+custom_parameters), `media` (base64 16-bit PCM), `dtmf` (digit), `mark`, `stop`. Unknown
+events are logged and ignored, never crash the call.
+
+Confirmed on real calls (2026-09-26): `media_format` = `{'encoding': 'base64', 'sample_rate':
+'8000'}`; incoming chunks can be any multiple of 320 bytes (re-cut into 20 ms frames).
+**Exotel strips query values from the Voicebot URL** and delivers them as
+`start.custom_parameters`, so `STREAM_TOKEN` is accepted from `?token=` (softphone, fake
+Exotel), Basic auth in the URL, or the `token` custom parameter on `start`.
 
 ### 5.2 Us → Exotel
 
-`media` (base64 PCM chunk), `clear` (flush playback = barge-in), `mark` (tells us when a
-prompt finished playing).
+`media` (base64 PCM, **3,200-byte chunks, Exotel's minimum**; a clip's last chunk padded
+with silence), `clear` (flush playback = barge-in), `mark` (tells us when a prompt finished
+playing).
 
 ### 5.3 Us → `ai/` — `POST /v1/turn`
 
@@ -133,14 +151,15 @@ then place the callback in a background task (§6.7).
 ### 6.1 `server.py`
 - `POST /missed-call` → validate it came from Exotel (shared secret in URL or IP allow-list)
   → enqueue callback → 200.
-- `WS /stream` → one `Call` object per connection; all exceptions caught and turned into a
-  graceful goodbye prompt + close.
+- `WS /stream` → token check (§5.1), then one `Call` object per connection; all exceptions
+  caught and turned into a graceful goodbye prompt + close.
+- `GET /softphone` (only with `SOFTPHONE=1`) → browser phone speaking the Exotel protocol.
 - `GET /health` → checks `ai/` reachable and prompts loaded.
 
 ### 6.2 `exotel.py`
 - `parse(frame: str) -> Event` and `media(stream_sid, pcm) / clear() / mark(name)` builders.
-- `place_call(to, flow_url)` via Exotel Call API (`POST /v1/Accounts/{sid}/Calls/connect`),
-  2 retries with backoff, logs outcome.
+- `place_call(to)` via Exotel's direct-stream API (`POST /v1/Accounts/{sid}/Calls/connect`
+  with `StreamUrl`, `StreamType=bidirectional`), 3 tries, retries only 5xx/429.
 
 ### 6.3 `call.py` — the turn loop
 State per call: `stream_sid, call_sid, phone_hash, lang, speaking(bool), buffer, expect,
@@ -152,13 +171,15 @@ on media      → vad.feed(frame)
                  if speaking and vad.speech_started → barge_in()
                  if not speaking and vad.endpoint    → send buffer as audio turn
 on dtmf       → if speaking: barge_in(); engine.turn(kind="dtmf", digits)
-on no-input   → engine.turn(kind="text", value="") ; engine decides the nudge
+on no-input   → engine.turn(kind="timeout") ; engine decides the nudge
 on mark(end)  → speaking = False; start no-input timer
 on stop/close → engine.turn(kind="hangup")  (best effort) ; drop buffers
 ```
 
 - One turn in flight at a time; audio arriving meanwhile is buffered, not lost.
-- While waiting on the engine > 700 ms, play the "hmm" filler prompt.
+- While waiting on the engine > 1 s, play the "hmm" filler prompt.
+- Barge-in needs `BARGE_IN_SPEECH_MS` (900) of speech and never fires in the first
+  `BARGE_IN_GRACE_MS` (4 s) of the call.
 - If the engine errors or times out → `fallback.py`.
 
 ### 6.4 `vad.py`

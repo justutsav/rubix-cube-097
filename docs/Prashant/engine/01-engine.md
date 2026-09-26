@@ -14,14 +14,16 @@ never invents a course code and never stores audio, transcripts, raw phone numbe
 ## 2. The call, step by step
 
 ```
-opened ─▶ known phone with saved progress? ── yes ─▶ RESUME: enter 4-digit PIN (* = new start)
+opened ─▶ [LANG menu, only if ENGINE_LANGS has >1: 1 हिंदी · 2 भोजपुरी]
+   ▼
+known phone with saved progress? ── yes ─▶ RESUME: enter 4-digit PIN (* = new start)
    │                                                     right PIN ─▶ back at the first unanswered question
    │                                                     wrong twice ─▶ new person on the same phone
    no
    ▼
 CONSENT (yes / no)  ── no ─▶ polite goodbye, nothing saved
    ▼
-PIN_SET (4 keys, so the call can resume later; skipped after 2 failures)
+PIN_SET (4 keys or spoken "एक दो तीन चार", so the call can resume later; skipped after 2 failures)
    ▼
 q0 district ─▶ q1 education ─▶ q2 family trade ─▶ q2_years ─▶ q3 current work
    ─▶ q4 interests ─▶ q5 constraints ─▶ q6 own work or job ─▶ q7 local demand
@@ -42,6 +44,13 @@ Each question uses the same small loop:
 | Keypad key | Saved at once, no read-back (keys are exact) |
 | Silence twice, or menu fails twice | Skips the question ("बाद में"); asked again on resume |
 | No speech-to-text available | Goes straight to the keypad menu |
+| A bare "हाँ"/"नहीं" to an open question | Keypad menu at once, no "sorry" (it means they missed the question) |
+| "फिर से बोलिए", "समझ नहीं आया", "वापस से बोलना" | Same question again, no try used up |
+| `#` at any point | Logs a call-back request for a district worker, repeats the question |
+| Spoken "एक"/"दो" after "हाँ के लिए एक…" | Counts as yes / no |
+
+Read-backs of a district say "गया ज़िला" ("गया" alone also means "went"). A plain "नहीं" to
+"any difficulty?" is accepted without a read-back (it became a double negative on real calls).
 
 One sentence can answer two questions: "बारह साल से सिलाई" fills the family trade and
 the years, and the years question is skipped.
@@ -60,7 +69,14 @@ Cheapest first; stops at the first hit:
 
 Guard rails found by testing: sound-alike matching only for single words of 5+ sounds,
 and close-spelling only for 6+ letters, because "पता" ≈ "पापड़" and "नहीं" ≈ "नवीं".
-The speech-to-text's top 5 guesses are all tried; later guesses count slightly less.
+Filler words ("का काम") are ignored when judging close spelling. The Hindi full stop "।"
+is stripped: Sarvam ends every transcript with one, and on the first real calls it made
+every short answer ("गया।") fail. The speech-to-text's top guesses are all tried; later
+guesses count slightly less.
+
+**Speech-to-text** (`engine/asr.py`, `ASR_PROVIDER`): `sarvam` (cloud, `saarika:v2.5`) → on
+error or > 2 s falls back to `vosk` (offline) → then the keypad. **Voice for the result**
+(`engine/tts.py`, `TTS_PROVIDER`): `sarvam` (`bulbul:v3`) → falls back to `gtts`.
 
 ## 4. Eligibility (`engine/eligibility.py`, `data/nsqf_entry.json`)
 
@@ -100,12 +116,21 @@ No answers → no guess: "a district worker will contact you".
 | `POST /v1/turn` | One turn in → `say` (prompt ids, or text for TTS), `expect`, `terminal` |
 | `GET /v1/prompts/hi` | Every fixed prompt, id → text (the IVR renders these to WAV) |
 | `POST /v1/tts` | Spoken result as 8 kHz audio |
+| `POST /v1/extract` | Measurement only: one answer → what was heard and understood (accuracy harness) |
 | `GET /health` | Providers in use, register size and sha |
 
 Utterance kinds: `opened`, `audio`, `text`, `dtmf`, `timeout`, `hangup`. Requests are
 validated at the boundary (key pattern, base64 audio ≤ ~20 s, length limits).
 
-## 7. Measured (2026-09-26, laptop, fake phone call end to end)
+## 7. Measured (2026-09-26)
+
+**Real calls** (Exotel trial → tunnel → laptop, Sarvam) and **softphone calls**: Sarvam heard
+almost every answer correctly; every miss was in our matching and is fixed (details and
+commits: `docs/Prashant/ivr/05-measurements.md`, `06-exotel-setup.md` §7). Engine time after a
+spoken answer: p50 570 ms, p95 810 ms (softphone, Sarvam). Accuracy on 38 synthetic answers,
+worst line condition: Sarvam 89% understood vs Vosk 68%.
+
+**Laptop, fake phone call end to end** (earlier):
 
 | Run | Result |
 |---|---|
@@ -122,12 +147,11 @@ much worse; the dialect test set (testing plan §6) is what gives real numbers.
 
 | Item | Why it matters | Until then |
 |---|---|---|
-| Cloud speech-to-text (Sarvam / Bhashini) | Vosk small is weak on phone audio and dialects | Vosk, and keypad menus |
-| AI helper model | Unmatched answers, side questions, follow-ups | Re-ask, then keypad |
-| Production text-to-speech | gTTS is an unofficial dev voice | gTTS |
+| Bhashini as a second cloud speech provider | Sovereign option; Sarvam rate-limits bursts (429) | Sarvam → Vosk → keypad |
+| AI helper model | Unmatched answers ("इंजीनियरिंग"), side questions, follow-ups | Menu, then keypad |
 | Pilot districts + local job data | Q0 is a placeholder list; local demand only uses the caller's own answer | Placeholder |
 | Village/block list (LGD) | Spec asks for block level, not district | District only |
 | Age question | Needed for PM-DAKSH routing (spec §2.4 stage 0.5) | Not routed |
 | Training-centre locations | Distance gate for "can't travel far" | Short courses score higher instead |
-| Other languages | Only Hindi prompts and word list exist | Hindi |
+| Other languages | Hindi complete; Bhojpuri prompts and words are drafts | Hindi, draft Bhojpuri |
 | Native-speaker prompts | Empathy requirement | Placeholder voice |

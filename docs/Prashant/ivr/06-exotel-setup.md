@@ -1,114 +1,122 @@
 # IVR — real phone call, end to end (free tier)
 
-Owner: Prashant · 2026-09-26 · Goal: a real phone rings, a real person answers the interview,
-and hears a result. Everything runs on a laptop; only Exotel and a tunnel are external.
+Owner: Prashant · Updated 2026-09-26 after the first real calls. Everything here was done on
+the trial account `self6743` and worked; the screens described are what Exotel showed.
 
 ```
-Your mobile ──call──▶ Exotel ExoPhone ──wss──▶ Cloudflare tunnel ──▶ laptop :8000 IVR adapter
-                                                                      │
-                                                                      └─▶ :8001 engine ──▶ Sarvam (speech)
+Mobile ──call──▶ Exotel ExoPhone ──Voicebot applet, wss──▶ Cloudflare quick tunnel ──▶ laptop :8765 IVR adapter
+                                                                                     └─▶ :8011 engine ──▶ Sarvam
 ```
 
-## 0. What you need
+## 0. Rules for testing
 
-| Thing | Cost | Account? |
+1. **Softphone first, Exotel last.** Engine changes are tested on the browser softphone
+   (`http://localhost:8765/softphone?token=<STREAM_TOKEN>`, started with `SOFTPHONE=1`): same
+   adapter, same engine, no Exotel credits. Use a real call only for line behaviour.
+2. **Stop the tunnel when not testing.** While it is up, *anyone* who dials the ExoPhone
+   reaches the bot (it happened: four calls from other people on 2026-09-26).
+3. **Never restart the engine or adapter during a call.** Check first: count of
+   `start stream` lines = count of `finished|stop|disconnect` lines in the adapter log.
+
+## 1. What the trial gives (2026-09-26)
+
+| Thing | Value |
+|---|---|
+| Credits | 150 at sign-up, 500 after verifying the mobile |
+| Cost of calls *to* the ExoPhone | 0 so far: 4 calls (~8 min) left credits at 500. Re-check after each session |
+| Cost of calls *from* Exotel (callback tests) | Not tried yet; assume per-minute |
+| ExoPhone | `08047289281`, attached to "self6743 Landing Flow" |
+| Shared trial number | `09513886363` + the account PIN, same flow |
+| Voicebot applet | Available on the trial, no activation needed |
+| Recording | Trial announces "this call is now being recorded" and keeps recordings (▶ in Inbox) even with "Record this?" off; delete them from the dashboard |
+| Inbox outcome | Shows "Client hung-up before connecting to…" for bot calls: normal, the bot is not a "connect" |
+
+## 2. Start the services
+
+Settings live in gitignored files: `ai/.env` (`SARVAM_API_KEY`) and `channels/ivr/.env`
+(`STREAM_TOKEN`, `ENGINE_URL=http://localhost:8011`, later `EXOTEL_*`). Ports 8000/8001 may be
+taken by other projects on this laptop; we use 8765 and 8011.
+
+```bash
+cd ai && ASR_PROVIDER=sarvam TTS_PROVIDER=sarvam uv run --extra tts --extra vosk uvicorn engine.server:app --port 8011
+```
+```bash
+cd channels/ivr && uv run uvicorn ivr.server:app --port 8765
+```
+```bash
+cloudflared tunnel --url http://localhost:8765
+```
+
+Wait ~1 minute after cloudflared prints `https://<words>.trycloudflare.com`, then check
+`https://<words>.trycloudflare.com/health`. Keep the default protocol (QUIC); `--protocol
+http2` gave HTTP 530. The address changes every time cloudflared restarts.
+
+Stream URL for Exotel: `wss://<words>.trycloudflare.com/stream?token=<STREAM_TOKEN>`.
+Exotel moves `?token=` into the call's custom parameters; the adapter accepts it there.
+
+## 3. Test A — call the ExoPhone (done, works)
+
+1. my.exotel.com → Installed Apps → **edit (pencil) on "self6743 Landing Flow"**.
+   Original content: Call Start → Greeting (for restoring later).
+2. Remove the Greeting (⊖). Drag **Voicebot** (not "Stream": that one is one-way) into Call Start.
+3. Voicebot panel: paste the stream URL. **Record this?** off. **Encrypt DTMF?** off (on would
+   scramble the PIN and menu keys). **Next → drag Hangup** into "Drop applet here". **SAVE**.
+4. From the verified mobile, call `08047289281`. Ear to the phone, not speaker.
+
+## 4. Test B — Exotel calls you (not done yet; costs credits)
+
+Add to `channels/ivr/.env`: `EXOTEL_SID=self6743`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`
+(Exotel → API Credentials), `EXOTEL_SUBDOMAIN` (`api.in.exotel.com` or `api.exotel.com`),
+`EXOTEL_CALLER_ID=08047289281`, `EXOTEL_STREAM_URL=<stream URL>`. Then:
+
+```bash
+cd channels/ivr && uv run python tools/call_me.py +91XXXXXXXXXX
+```
+
+## 5. Test C — missed call, then callback (not done yet; costs credits)
+
+1. Add `MISSED_CALL_SECRET=<random>` to `channels/ivr/.env`, restart the adapter.
+2. New app: **Passthru** → `https://<words>.trycloudflare.com/missed-call?key=<MISSED_CALL_SECRET>`
+   → **Hangup**. Make it the ExoPhone's flow instead of Test A's.
+3. Ring the ExoPhone, hang up; it calls back in ~10 s. Check whether the caller is billed.
+
+## 6. Debugging a real call
+
+Start with the debug switches (test calls only: they keep what the caller said):
+
+```bash
+cd ai && ENGINE_LOG_TRANSCRIPTS=1 ASR_PROVIDER=sarvam ... uvicorn engine.server:app --port 8011
+```
+```bash
+cd channels/ivr && IVR_DEBUG_DIR=/some/tmp/dir uv run uvicorn ivr.server:app --port 8765
+```
+
+The engine log then shows `debug: heard [...]` per answer; the adapter saves each utterance
+as a WAV and logs one metrics line per turn (`uv run python tools/latency.py <log>`).
+Delete the WAVs afterwards.
+
+## 7. What broke on the first real calls, and why
+
+| Symptom | Cause | Fix (commit) |
 |---|---|---|
-| Exotel trial: ExoPhone + API key/token + Account SID | free trial credits | **yes** (you sign up) |
-| Sarvam key | free credits | done (`ai/.env`) |
-| `cloudflared` quick tunnel (public `wss://` URL to your laptop) | free | **no** |
-| Engine + adapter | free | no |
+| Silence; adapter log `stream rejected: bad token` | Exotel strips `?token=`; sends it as a custom parameter | Accept it there (`8c37682`) |
+| Prompts cut into fragments ("hum hum") | Barge-in on line noise/echo at 120 ms | 400 ms (`85d8d42`), then 900 ms (`94093f8`) |
+| Welcome cut at the very start | Exotel's recording announcement heard as speech | No barge-in in the first 4 s (`0bf6394`) |
+| Short answers ("गया") never understood | Sarvam ends every transcript with "।" | Strip "।" (`85d8d42`) |
+| Questions answered "हाँ जी" blind | Backchannel while listening cut the question | 900 ms barge-in; bare yes/no → menu (`94093f8`, `6612969`) |
+| Call ended with "sorry" after a long answer | Adapter waited 1.5 s; Sarvam 2 s + Vosk fallback is longer | Wait 4 s (`94093f8`) |
+| "कोई परेशानी है?" → "नहीं" → read-back → "नहीं" | Double negative | Accept plain "नहीं" there (`6612969`) |
 
-Install cloudflared: macOS `brew install cloudflared` · Windows `winget install --id Cloudflare.cloudflared` ·
-Linux: the `.deb`/binary from github.com/cloudflare/cloudflared/releases.
-
-**Ask Exotel support when you sign up** (these decide whether the trial is enough):
-1. Is **AgentStream / Voicebot (bidirectional streaming)** enabled on a trial account? If not, please enable it.
-2. Can the trial ExoPhone take **incoming** calls, and call only **verified** numbers outbound?
-3. Which API host is our account on (`api.in.exotel.com` or `api.exotel.com`)?
-
-## 1. Start the two services (terminal 1 and 2)
-
-```bash
-cd ai && ASR_PROVIDER=sarvam TTS_PROVIDER=sarvam uv run --extra tts --extra vosk uvicorn engine.server:app --port 8001
-```
-```bash
-cd channels/ivr && STREAM_TOKEN=pick-a-long-random-string ENGINE_URL=http://localhost:8001 uv run uvicorn ivr.server:app --port 8000
-```
-
-(Port 8001 busy? Use any free port and set `ENGINE_URL` to match.)
-Or both at once: `ASR_PROVIDER=sarvam docker compose up --build` (needs Docker running).
-
-## 2. Open the tunnel (terminal 3)
-
-```bash
-cloudflared tunnel --url http://localhost:8000
-```
-
-It prints `https://<random-words>.trycloudflare.com`. Your stream URL is:
-
-```
-wss://<random-words>.trycloudflare.com/stream?token=<STREAM_TOKEN>
-```
-
-The address changes every time cloudflared restarts; update Exotel when it does.
-Give it a minute after start (new names take time to reach DNS) and keep the default
-protocol (QUIC): `--protocol http2` gave HTTP 530 in our test.
-Check it: `https://<random-words>.trycloudflare.com/health` should show `{"ok":true,...}`.
-
-## 3. Test A — call the ExoPhone, talk to the bot (simplest)
-
-1. my.exotel.com → **App Bazaar** → **Create app** (flow).
-2. Drag in **Voicebot** applet → URL = the stream URL above. Leave sample rate at 8000.
-3. After it, add **Hangup**. Save.
-4. **ExoPhones** → your number → set this app as its incoming flow.
-5. Call the ExoPhone from your mobile. You should hear the welcome and consent.
-6. Answer by voice or keypad all the way to the result.
-
-Terminal 2 should show `start stream=… call=…`, one metrics line per turn, then `finished`.
-
-## 4. Test B — Exotel calls you (the callback leg)
-
-```bash
-cd channels/ivr && EXOTEL_SID=… EXOTEL_API_KEY=… EXOTEL_API_TOKEN=… EXOTEL_CALLER_ID=<ExoPhone> \
-  EXOTEL_STREAM_URL='wss://<random-words>.trycloudflare.com/stream?token=<STREAM_TOKEN>' \
-  uv run python tools/call_me.py +91XXXXXXXXXX
-```
-
-Your phone rings from the ExoPhone and the interview starts when you pick up. On a trial,
-`+91XXXXXXXXXX` must be a number verified in the Exotel dashboard.
-
-## 5. Test C — missed call, then callback (the real product flow)
-
-1. Restart the adapter with the Exotel settings from Test B **plus** `MISSED_CALL_SECRET=<another-random-string>`.
-2. New app in App Bazaar: **Passthru** applet → URL
-   `https://<random-words>.trycloudflare.com/missed-call?key=<MISSED_CALL_SECRET>` → then **Hangup**.
-3. Set it as the ExoPhone's incoming flow (instead of Test A's).
-4. Call the ExoPhone and hang up after the first ring. Within ~10 s it calls you back.
-
-Check with Exotel whether a call hung up by the Passthru+Hangup flow is billed to the caller;
-the product promise is that the missed call is free for them.
-
-## 6. What to record after each test
-
-```bash
-cd channels/ivr && uv run python tools/latency.py <adapter log file>
-```
-
-Add a row to `README.md`'s log and the numbers to `05-measurements.md`: phone and network used,
-did it complete, silence p50/p95, anything that sounded wrong (clipped prompts, echo, delay).
-
-## 7. If something goes wrong
+## 8. If something goes wrong
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Call connects, silence, adapter log shows nothing | Exotel can't reach the URL | Check `/health` via the tunnel URL; URL must be `wss://…/stream?token=…` |
-| Adapter log: `stream rejected: bad token` | Token in Exotel URL ≠ `STREAM_TOKEN` | Copy it again exactly |
-| Adapter log shows `start` but no `media` | Streaming not enabled on the account | Ask Exotel to enable AgentStream / Voicebot |
-| Bot audio distorted or choppy | Chunk size | We send 3,200-byte chunks (Exotel's minimum); report it with the log |
-| Bot never hears you | VAD thresholds on a real line | Try `VAD_AGGRESSIVENESS=1`; note the phone/network |
-| Engine errors → "sorry" prompt | Engine down or port wrong | `curl localhost:8001/health`; `ENGINE_URL` |
-| Callback API returns 401/403 | Wrong key/token/SID or API host | Check `EXOTEL_SUBDOMAIN` (`api.in.exotel.com` vs `api.exotel.com`) |
-| Callback API: number not allowed | Trial: unverified number | Verify it in the dashboard |
-| Tunnel URL stopped working | cloudflared restarted | New URL → update Exotel app / `EXOTEL_STREAM_URL` |
-| `/health` via tunnel slow or resets in the first minutes | New quick tunnel still settling | Wait a minute; if it persists, restart cloudflared |
-| HTTP 530 from the tunnel URL | Edge can't reach the tunnel (seen with `--protocol http2`) | Use the default protocol |
+| Call connects, silence, adapter log empty | Exotel can't reach the URL | `/health` through the tunnel; URL is `wss://…/stream?token=…` |
+| `stream rejected: bad token` | Token in Exotel ≠ `STREAM_TOKEN` | Copy it again |
+| `start` but no `media` | Streaming not enabled on the account | Ask Exotel support |
+| Bot audio distorted | Chunk size | We send 3,200-byte chunks; report with the log |
+| Many `barge_in: true` in metrics | Echo / speakerphone / backchannel | Handset at the ear; raise `BARGE_IN_SPEECH_MS` |
+| Engine errors → "sorry" | Engine down, wrong port, or slow | `curl localhost:8011/health`; `ENGINE_TIMEOUT_MS` |
+| Tunnel slow or resets in the first minutes | New quick tunnel settling | Wait a minute; restart cloudflared |
+| HTTP 530 from the tunnel | `--protocol http2` | Default protocol |
+| Callback API 401/403 | Key/token/SID or API host | `EXOTEL_SUBDOMAIN` |

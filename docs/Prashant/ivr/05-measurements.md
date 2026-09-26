@@ -162,3 +162,14 @@ meaning → a repeat command that re-asks without using a try. A 9 s answer made
 Vosk fell back, and the adapter's 1.5 s engine wait expired first → call ended with "sorry"
 → the adapter now waits 4 s (the filler covers it). Credits after 4 incoming calls (~8 min):
 unchanged at 500.
+
+### 2026-09-26, softphone and more Exotel calls (after the fixes above)
+
+Two softphone calls (one to the result, 39 turns) and four Exotel calls from other people
+(one to the result, 28 turns). Engine after a spoken answer, softphone: p50 570 ms, p95 810 ms;
+7 barge-ins in 52 turns (was 11 in 22). Understood first time: गया, बैचलर्स, बीटेक डिग्री,
+दसवीं, 5वीं, खेती, हम लोग किसान हैं, दस साल, पंद्रह साल, बिजली मिस्त्री, अपना काम, कुछ नहीं
+करते हैं. Remaining clumsiness, fixed in `6612969`: bare "हाँ" to open questions (→ menu),
+"नहीं" to "any difficulty?" double negative (→ accepted), spoken "एक/दो" (→ yes/no), spoken PIN,
+"गया" read back as "गया ज़िला", softphone reusing one number (→ random). Not fixed on purpose:
+"इंजीनियरिंग"/"इंजीनियर बनना है" (no engineering courses at NSQF ≤ 4; the menu handles it).

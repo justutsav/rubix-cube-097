@@ -59,7 +59,7 @@ Each is one scripted fake call. ✓ = must pass for demo.
 | 5 | Two failed understandings | Keypad options offered | ✓ |
 | 6 | Hang up at Q4 | Engine told; next call resumes at Q4 | ✓ |
 | 7 | Engine returns 500 | Spoken apology + callback logged; no silence > 3 s | ✓ |
-| 8 | Engine slow (2 s) | Filler plays at 700 ms; call continues | ✓ |
+| 8 | Engine slow (2 s) | Filler plays after 1 s; call continues | ✓ |
 | 9 | Engine slow 3 times in one call | Call switches to keypad-only | ✓ |
 | 10 | Unknown Exotel event | Logged, ignored, call continues | ✓ |
 | 11 | WebSocket drops without `stop` | Treated as hang-up | ✓ |
@@ -76,6 +76,11 @@ Each is one scripted fake call. ✓ = must pass for demo.
 ---
 
 ## 5. Real-call checklist
+
+**Order: softphone first, Exotel last.** Every engine change is tried on the browser softphone
+(`/softphone`, same adapter and engine, no Exotel credits). Only line-level behaviour (echo,
+noise, the carrier's announcement, audio quality) needs a real Exotel call. Stop the tunnel
+when not testing: anyone who dials the ExoPhone reaches the bot while it is up.
 
 Run from at least three phones: a ₹1,000 feature phone, a cheap Android, and one on 2G/
 weak signal. Each run logs to a sheet: date, phone, network, place, result, latency p50/p95,

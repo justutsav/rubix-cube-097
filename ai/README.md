@@ -56,3 +56,5 @@ Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 | `TTS_PROVIDER` | `gtts` | `gtts` = dev voice · `sarvam` = Bulbul, falls back to gtts |
 | `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` | `bulbul:v3` / Sarvam default | |
 | `LLM_PROVIDER` | `none` | AI helper for unmatched answers (needs an account) |
+| `ENGINE_LANGS` | `hi` | e.g. `hi,bho` asks for the language at call start (Bhojpuri is a draft) |
+| `ENGINE_LOG_TRANSCRIPTS` | unset | `1` logs what was heard per answer — **test calls only** |
