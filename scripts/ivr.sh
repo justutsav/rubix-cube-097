@@ -10,7 +10,8 @@
 #
 # Defaults: Hindi, Bengali, Odia (ENGINE_LANGS); everything on this machine, no API: speech-to-text
 # (ASR_PROVIDER=local), AI helper (LLM_PROVIDER=local), voices (Piper, MMS Odia). Set either to
-# sarvam for the cloud (ai/.env SARVAM_API_KEY).
+# sarvam for the cloud (ai/.env SARVAM_API_KEY). TESTING: no calls-per-number limit here
+# (MAX_CALLS_PER_DAY; the engine's own default is 5 — set MAX_CALLS_PER_DAY=5 before a pilot).
 # Needs: uv, cloudflared, channels/ivr/.env (STREAM_TOKEN), and once:
 #   (cd ai && uv run --extra local --with onnx python tools/get_local_ai.py)
 #   (cd ai && uv run python tools/get_piper_voice.py && uv run python tools/get_piper_voice.py bn_BD-google-medium)
@@ -51,6 +52,7 @@ start_engine() {
   ( cd "$ROOT/ai" && nohup env $dbg ENGINE_DB="$RUN/engine.db" \
       ASR_PROVIDER="${ASR_PROVIDER:-local}" TTS_PROVIDER="${TTS_PROVIDER:-piper}" \
       ENGINE_LANGS="${ENGINE_LANGS:-hi,bn,or}" LLM_PROVIDER="${LLM_PROVIDER:-local}" \
+      MAX_CALLS_PER_DAY="${MAX_CALLS_PER_DAY:-1000000}" \
       uv run -q --python 3.11 --extra tts --extra vosk --extra piper --extra local \
       uvicorn engine.server:app --port "$ENGINE_PORT" </dev/null >>"$RUN/engine.log" 2>&1 &
     echo $! >"$RUN/engine.pid" ) >/dev/null 2>&1
@@ -121,5 +123,5 @@ case "$CMD" in
     echo "calls in progress: $(calls_active)"
     pid_alive tunnel && { echo "URL:"; stream_url; } ;;
   url) stream_url ;;
-  *) sed -n '2,17p' "$0"; exit 1 ;;
+  *) sed -n '2,18p' "$0"; exit 1 ;;
 esac
