@@ -38,6 +38,13 @@ prompt plays; tick "headphones" to test talking over prompts.
 
 Real phone calls through Exotel: `docs/Prashant/ivr/06-exotel-setup.md`.
 
+## Settings
+
+`channels/ivr/.env` (gitignored, read at start-up; template `.env.example`). The ones that
+matter first: `STREAM_TOKEN` (required once the adapter is public) and `ENGINE_URL`.
+`EXOTEL_*` and `MISSED_CALL_SECRET` only for callbacks. Test-call debugging only:
+`IVR_DEBUG_DIR=<dir>` saves each caller utterance as a WAV.
+
 ## Tests
 
 ```bash
