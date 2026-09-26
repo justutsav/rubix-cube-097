@@ -54,6 +54,13 @@ create table if not exists callback_request (
   id text primary key, beneficiary_id text not null, session_id text not null,
   at_state text not null, status text not null default 'OPEN', created_at text not null
 );
+create table if not exists flag (
+  id text primary key, session_id text, phone_hash text, kind text not null,
+  at_state text, created_at text not null
+);                                               -- guardrail events; never what was said
+create table if not exists ai_usage (
+  day text primary key, calls integer not null
+);
 create table if not exists recommendation (
   id text primary key, beneficiary_id text not null, ranked text not null,
   weights_version text not null, nqr_snapshot_sha text not null,
@@ -142,6 +149,32 @@ class Store:
         """Caller pressed the help key: a district worker should call them."""
         self.q("insert into callback_request(id,beneficiary_id,session_id,at_state,created_at) values(?,?,?,?,?)",
                str(uuid.uuid4()), bid, session_id, at_state, now())
+
+    # --- guardrails ------------------------------------------------------------------
+
+    def flag(self, session, kind, at_state=None):
+        """A guardrail fired (injection, abuse, a cap…). Counts only: no words are stored."""
+        self.q("insert into flag values(?,?,?,?,?,?)", str(uuid.uuid4()), session["id"],
+               session["phone_hash"], kind, at_state, now())
+
+    def flag_counts(self, days=1):
+        since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat(timespec="seconds")
+        return {r[0]: r[1] for r in self.q(
+            "select kind, count(*) from flag where created_at >= ? group by kind", since)}
+
+    def calls_today(self, phone_hash) -> int:
+        today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        return self.q("select count(*) from session where phone_hash=? and started_at >= ?",
+                      phone_hash, today).fetchone()[0]
+
+    def take_ai_budget(self, limit) -> bool:
+        """One AI call from today's budget. False once today's limit is spent."""
+        day = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        row = self.q("select calls from ai_usage where day=?", day).fetchone()
+        if row and row[0] >= limit:
+            return False
+        self.q("insert into ai_usage values(?,1) on conflict(day) do update set calls=calls+1", day)
+        return True
 
     def save_recommendation(self, bid, result, ranked):
         self.q("insert into recommendation values(?,?,?,?,?,?,?)", str(uuid.uuid4()), bid,

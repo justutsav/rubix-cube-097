@@ -212,6 +212,32 @@ def leftover_confirmation(nbest) -> bool:
         (yes_no(nbest) or ("",))[0] == "yes"
 
 
+@lru_cache(maxsize=1)
+def _guard():
+    g = json.loads((LEX_PATH.parent / "guardrails.json").read_text(encoding="utf-8"))
+    return {"abuse": [norm(w) for w in g["abuse"]], "injection": [norm(w) for w in g["injection"]]}
+
+
+def is_abusive(text: str) -> bool:
+    """Abuse in any text we heard or would speak. Devanagari stems match inside words ("चोद");
+    short Latin words only as whole words ("mc" must not hit "much")."""
+    t = norm(text)
+    words = set(t.split())
+    for w in _guard()["abuse"]:
+        if w.isascii():
+            if (" " in w and w in t) or w in words:
+                return True
+        elif w in t:
+            return True
+    return False
+
+
+def looks_like_injection(nbest) -> bool:
+    """'ignore your instructions', 'अब तुम…', 'system prompt' — an attempt to steer the assistant."""
+    t = f" {norm(nbest[0])} " if nbest else ""
+    return any(f" {p} " in t for p in _guard()["injection"])       # whole words: "अब तुम्हारी" is fine
+
+
 def wants_repeat(nbest) -> bool:
     """'फिर से बोलिए', 'समझ नहीं आया' … Only close matches: this skips an answer, so no guessing."""
     ranked = best_over(tables()["repeat"], nbest[:1])

@@ -86,7 +86,8 @@ It returns one of:
 | AI says | Engine does |
 |---|---|
 | `answer` + a value from the question's own list | Reads it back like any answer ("आपने कहा…, सही है?") |
-| `question` + a short reply | Speaks the reply (from `data/facts_hi.md` only), then asks the same question again |
+| `question` + a fact id | Speaks our own pre-recorded answer (`data/facts_hi.json`), then asks the same question again |
+| `abuse` / `offtopic` | Polite warning (abuse twice ends the call) / "I can only help with courses" (see 07-guardrails) |
 | `help` | Logs a call-back request, repeats the question |
 | `repeat` | Repeats the question |
 | `unclear` | Normal re-ask → keypad menu |
@@ -106,8 +107,8 @@ Keypad menus remain the fallback when the AI is off, out of budget, or unsure.
 
 It also decides yes/no when a caller answers a yes/no question in their own words ("चलिए शुरू
 करते हैं"). Guard rails: a value not on the list is thrown away; replies come only from the fact
-sheet (fees, stipend, centre, dates → "यह जानकारी हमारे ज़िले के साथी देंगे"), are cut at a
-sentence end, never name a course; at most 2 side questions per question.
+sheet by id only (the AI never writes spoken words; fees, stipend, centre, dates → "यह जानकारी
+हमारे ज़िले के साथी देंगे"); at most 2 side questions per question, 4 per call.
 
 **Cost:** at most `LLM_MAX_PER_CALL` (6) AI calls per phone call, never for one-word or empty
 answers; tests never call it. If Sarvam is slow or down the call simply carries on with

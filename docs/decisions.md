@@ -137,3 +137,12 @@ sooner. Voice `hi_IN-priyamvada-medium`. Its training data is CC BY-NC-SA 4.0: a
 the hackathon and a government pilot, **to be confirmed before any paid deployment**. Sarvam
 remains a switch (`TTS_PROVIDER=sarvam`).
 
+## 2026-09-26 — speech policy: the assistant only says what we wrote
+
+Whatever a caller says, the assistant speaks only our own sentences: pre-recorded prompts,
+pre-written answers to side questions (`ai/data/facts_hi.json`, picked by id), the recommendation
+template, and caller-given place/job names after cleaning. The AI never writes spoken words.
+Injection and abuse are filtered before the AI; abuse twice ends the call; per-call, per-number
+and daily caps bound cost. Guardrail events are logged as counts, never words. No promises of
+money or jobs are ever made (fact A12). Details and tests: `docs/Prashant/ivr/07-guardrails.md`.
+

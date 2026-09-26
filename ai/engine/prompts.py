@@ -12,6 +12,11 @@ from .districts import load as districts
 from .extract import lexicon
 
 BASE_HI = {
+    "stay_on_topic": "मैं सिर्फ़ आपके लिए सही कोर्स ढूँढने में मदद कर सकती हूँ। चलिए, आगे बढ़ते हैं।",
+    "abuse_warning": "कृपया सम्मान से बात कीजिए। मैं आपकी मदद के लिए ही हूँ।",
+    "abuse_bye": "माफ़ कीजिए, इस तरह बात आगे नहीं बढ़ सकती। जब चाहें, दोबारा फ़ोन कीजिए। नमस्ते।",
+    "call_limit": "आज इस नंबर से बहुत बार फ़ोन आ चुका है। कृपया कल फिर कोशिश कीजिए। धन्यवाद।",
+    "v-dist-told": "आपका बताया हुआ ज़िला",
     "q0_again": "अपने ज़िले का नाम बताइए, जैसे, गया, बिहार।",
     "ack_got_it": "जी, समझ गई।",
     "ack_thanks": "धन्यवाद।",
@@ -143,6 +148,9 @@ def catalogue(lang: str = "hi") -> dict:
     for y in range(0, 41):
         c[f"v-years-{y}"] = "एक साल से कम" if y == 0 else f"{y} साल"
     c["q0_menu"] = district_menu_hi()
+    from .llm import fact_list                     # side-question answers are pre-recorded too
+    for f in fact_list():
+        c[f"fact-{f['id']}"] = f["hi"]
     for q in ("q2", "q3", "q4", "q7"):
         c[f"{q}_menu"] = trade_menu_hi()
     return c

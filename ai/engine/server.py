@@ -155,6 +155,12 @@ def speak(req: TtsRequest):
     return Response(pcm, media_type=f"audio/l16;rate={req.rate}")
 
 
+@app.get("/v1/flags")
+def flags(days: int = 1):
+    """Guardrail events per kind (injection, abuse, caps…) over the last `days`. Counts only."""
+    return STORE.flag_counts(days)
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "asr": asr.PROVIDER, "tts": tts.PROVIDER,

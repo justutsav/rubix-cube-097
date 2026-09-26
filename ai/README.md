@@ -45,7 +45,8 @@ uv run --extra dev pytest -q
 | `data/lexicon.json` | Spoken words → trades, education, yes/no… | authored; no course codes |
 | `data/weights.json` | Ranking weights, versioned | authored judgement calls |
 | `data/districts.json` | Pilot districts for Q0 | **placeholder** choice |
-| `data/facts_hi.md` | The only facts the AI may state | PM-AJAY guidelines, via `docs/Utsav/research/01-the-customer.md` |
+| `data/facts_hi.json` | Pre-written answers to side questions; the AI picks an id, never writes words | PM-AJAY guidelines, via `docs/Utsav/research/01-the-customer.md` |
+| `data/guardrails.json` | Abuse and injection word lists, checked before the AI | authored |
 
 Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 
@@ -66,6 +67,7 @@ Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 | `SARVAM_LLM_MODEL` | `sarvam-105b-conversations` | JSON mode, fast |
 | `LLM_MAX_PER_CALL` | `6` | cost cap: AI calls per phone call |
 | `LLM_TIMEOUT_MS` | `2500` | slower → carry on without it |
-| `SARVAM_TTS_PACE` | `1.2` | speaking speed of the Sarvam voice |
+| `SARVAM_TTS_PACE` | `1.0` | speaking speed of the Sarvam voice |
+| `MAX_ASIDES_PER_CALL` / `MAX_CALLS_PER_DAY` / `LLM_DAILY_BUDGET` | `4` / `5` / `500` | guardrail caps (see `docs/Prashant/ivr/07-guardrails.md`) |
 | `ENGINE_LANGS` | `hi` | e.g. `hi,bho` asks for the language at call start (Bhojpuri is a draft) |
 | `ENGINE_LOG_TRANSCRIPTS` | unset | `1` logs what was heard per answer — **test calls only** |

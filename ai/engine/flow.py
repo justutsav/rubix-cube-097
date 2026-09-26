@@ -35,6 +35,10 @@ LANG_DTMF = {str(i + 1): lang for i, lang in enumerate(LANGS)}
 HELP_KEY = "#"          # any time: ask for a person to call back (0 and 9 are menu choices)
 AI_PER_CALL = int(os.environ.get("LLM_MAX_PER_CALL", 6))     # cost cap: then menus/keypad only
 MAX_ASIDES = 2          # side questions per question before we steer to the menu
+MAX_ASIDES_PER_CALL = int(os.environ.get("MAX_ASIDES_PER_CALL", 4))
+MAX_CALLS_PER_DAY = int(os.environ.get("MAX_CALLS_PER_DAY", 5))       # per phone number
+AI_PER_DAY = int(os.environ.get("LLM_DAILY_BUDGET", 500))             # all callers together
+KEEP = ("lang", "taught", "ai_used", "asides_total", "abuse")        # survive every step of a call
 PROGRESS = {"q4": "progress_half", "q7": "progress_last"}
 ACKS = ["ack", "ack_got_it", "ack_thanks", "ack_good"]      # rotate, so it does not sound like a machine
 YES_NO_STATES = {"CONSENT": "consent", "RESUME": "resume_offer", "READBACK": "readback_confirm",
@@ -65,7 +69,7 @@ def _trade_clip(v):
 def _place_clips(v):
     if v.get("id"):
         return [f"v-dist-{v['id'].lower()}"]
-    return [{"kind": "tts", "text": v.get("hi") or v.get("district") or "दूसरा ज़िला"}]
+    return [{"kind": "tts", "text": v["hi"]}] if v.get("hi") else ["v-dist-told"]   # never speak unchecked text
 
 
 def _pilot_place(pid):
@@ -136,11 +140,15 @@ def open_value(field, ai):
         if not ok:
             return None
         state, district = ok
-        return {"id": None, "district": district, "state": state,
-                "hi": re.sub(r"[^\u0900-\u097F ,]", "", str(ai.get("hi") or ""))[:60] or None}
+        hi = re.sub(r"[^\u0900-\u097F ,]", "", str(ai.get("hi") or ""))[:60] or None
+        if hi and extract.is_abusive(hi):
+            hi = None
+        return {"id": None, "district": district, "state": state, "hi": hi}
     label = re.sub(r"[^\u0900-\u097F ]", "", str(ai.get("label") or "")).strip()[:30]
     if not label:
         return None
+    if extract.is_abusive(label):
+        label = "कोई और काम"                          # never read an abusive word back
     known = recommend.sectors()
     custom = {"id": "CUSTOM", "label": label,
               "sectors": [x for x in (ai.get("sectors") or []) if x in known][:3],
@@ -193,7 +201,12 @@ class Flow:
     # entry point ---------------------------------------------------------------
     def step(self, inp: Input) -> dict:
         at = self.state.get("at", "NEW")
-        if inp.kind == "opened" and at != "NEW":
+        spoken = inp.kind in ("audio", "text") and bool(inp.nbest) and at not in ("NEW", "DONE", "CLOSED")
+        if spoken and extract.is_abusive(inp.nbest[0]):
+            self._abuse()                          # guardrail: before anything else, no AI
+        elif spoken and extract.looks_like_injection(inp.nbest):
+            self._off_topic("injection")           # "ignore your instructions…": never reaches the AI
+        elif inp.kind == "opened" and at != "NEW":
             self._repeat()                         # channel reconnected: say the current prompt again
         elif (inp.kind in ("audio", "text") and inp.nbest and at not in ("NEW", "DONE", "CLOSED")
               and extract.wants_repeat(inp.nbest)):
@@ -226,7 +239,13 @@ class Flow:
         heard = inp.nbest or []
         words = extract.norm(heard[0]).split() if heard else []
         used = self.state.get("ai_used", 0)
-        if len(words) < 2 or used >= AI_PER_CALL:          # noise, a lone word, or out of budget
+        if len(words) < 2:                                  # noise or a lone word: not worth a call
+            return None
+        if used >= AI_PER_CALL:
+            self._flag_once("cap_ai_call")
+            return None
+        if not self.st.take_ai_budget(AI_PER_DAY):          # today's budget for all callers is spent
+            self._flag_once("cap_ai_day")
             return None
         self.state["ai_used"] = used + 1
         return llm.understand(prompts.catalogue("hi").get(question_id, question_id), options, heard, describe,
@@ -247,10 +266,14 @@ class Flow:
         return self._ai_other(ai), inp
 
     def _ai_other(self, ai) -> bool:
-        """Side question / help / repeat. True if handled (the turn is over)."""
-        if ai["intent"] == "question" and self.state.get("asides", 0) < MAX_ASIDES:
+        """Side question / help / repeat / abuse / off-topic. True if handled (the turn is over)."""
+        if ai["intent"] == "question":
+            if self.state.get("asides", 0) >= MAX_ASIDES or self.state.get("asides_total", 0) >= MAX_ASIDES_PER_CALL:
+                self._off_topic("cap_asides")
+                return True
             self.state["asides"] = self.state.get("asides", 0) + 1
-            self.say = [{"kind": "tts", "text": ai["reply"]}]
+            self.state["asides_total"] = self.state.get("asides_total", 0) + 1
+            self.say = [f"fact-{ai['fact']}"]              # our own pre-recorded sentence, never AI text
             self._repeat()                                 # answer, then the same question again
             return True
         if ai["intent"] == "help":
@@ -259,7 +282,37 @@ class Flow:
         if ai["intent"] == "repeat":
             self._repeat()
             return True
+        if ai["intent"] == "abuse":
+            self._abuse()
+            return True
+        if ai["intent"] == "offtopic":
+            self._off_topic("offtopic")
+            return True
         return False
+
+    # guardrails ---------------------------------------------------------------------
+    def _flag(self, kind):
+        self.st.flag(self.s, kind, self.state.get("at"))
+
+    def _flag_once(self, kind):
+        if not self.state.get(f"flagged_{kind}"):
+            self.state[f"flagged_{kind}"] = True
+            self._flag(kind)
+
+    def _off_topic(self, kind):
+        """Steering attempt or too much off-topic talk: say what we are for, ask the same question."""
+        self._flag(kind)
+        self.say = ["stay_on_topic"]
+        self._repeat()
+
+    def _abuse(self):
+        """First time: a polite request. Second time: a polite goodbye."""
+        self.state["abuse"] = self.state.get("abuse", 0) + 1
+        self._flag("abuse")
+        if self.state["abuse"] >= 2:
+            return self._close("abuse_bye", completed=False)
+        self.say = ["abuse_warning"]
+        self._repeat()
 
     def _help(self):
         self.st.callback_request(self.bid, self.s["id"], self.state.get("at"))
@@ -287,7 +340,7 @@ class Flow:
                 "expect": self.expect, "turn_budget_ms": 1800, "terminal": self.terminal}
 
     def _go(self, at, **kw):
-        keep = {k: self.state[k] for k in ("lang", "taught", "ai_used") if k in self.state}   # survive every step
+        keep = {k: self.state[k] for k in KEEP if k in self.state}
         self.state = {"at": at, **kw, **keep}
         self.s["state"] = self.state
 
@@ -310,6 +363,13 @@ class Flow:
         self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _begin(self):
+        if self.st.calls_today(self.s["phone_hash"]) > MAX_CALLS_PER_DAY:
+            self._flag("cap_calls")                        # spam / cost guard: this number, today
+            self.say = ["call_limit"]
+            self.terminal = True
+            self.expect = {"kind": "none"}
+            self._go("CLOSED")
+            return
         prev = self.st.resumable(self.s["phone_hash"])
         if prev and self.st.answers(prev["id"]):
             # same phone, unfinished interview: ask, don't assume (it may be someone else on it)

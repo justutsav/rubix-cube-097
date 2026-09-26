@@ -10,8 +10,9 @@ Everything about the phone channel, from demo to final. Read in order.
 | [04-optimization.md](04-optimization.md) | How we keep it fast, cheap and reliable: targets, levers, review loop |
 | [05-measurements.md](05-measurements.md) | Measured numbers: accuracy by line quality, latency, load — each re-runnable |
 | [06-exotel-setup.md](06-exotel-setup.md) | Runbook: real phone call end to end on the free tier (Exotel + tunnel) |
+| [07-guardrails.md](07-guardrails.md) | Guardrails against injection, abuse, false promises and cost attacks; how they are tested |
 
-New docs continue the numbering (`07-…`). Update the log below with every piece of work,
+New docs continue the numbering (`08-…`). Update the log below with every piece of work,
 per `CONTRIBUTING.md`.
 
 ## Progress log
@@ -39,4 +40,5 @@ per `CONTRIBUTING.md`.
 | 2026-09-26 | Open answers | No more hard-coded places and jobs: any place in India (AI → state + district, checked against all 722 districts; read back live) and any job (AI → custom trade with real NQR sectors, used by the recommender). Live with real AI: भुवनेश्वर → Khordha, Odisha; सूरत → Surat, Gujarat; इंजीनियर → engineering sectors; वीडियो एडिटिंग → VFX Editor / DTP courses. Fixed on the way: the AI ignored extra fields until they were in its JSON template |
 | 2026-09-26 | Pace + patience | From a real call's feedback: voice slowed 0.85 → 1.0 (natural); end-of-answer pause 240 → 800 ms (callers were cut mid-sentence: "मैं।", "मेरे।"); no-input wait 6 → 8 s. A second "हाँ सही है" after a read-back no longer opens the next question's menu. "कुक/रसोइया/शेफ" understood. Latency cost: ~0.56 s more per spoken answer, on purpose |
 | 2026-09-26 | One command | `scripts/ivr.sh start/restart/stop/status/url`: starts engine + adapter + tunnel, prints the Exotel URL, `restart` keeps the tunnel (same URL), refuses to restart/stop during a call. Tested start → status → restart (URL kept) → stop (nothing left) → start |
+| 2026-09-26 | Guardrails P0–P2 | The AI can no longer write spoken words: side questions are answered by picking a pre-written, pre-recorded answer id. Injection/abuse filtered before the AI; abuse twice ends the call; abusive names never read back; caps per question/call/number/day; flag counts at `/v1/flags`; 50-phrase red-team set in CI (hostile fake AI) and `tools/redteam.py` for the real AI: 50/50 passed. See 07-guardrails.md |
 

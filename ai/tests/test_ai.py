@@ -33,13 +33,12 @@ def test_off_script_answer_is_understood_and_still_read_back(caller, ai):
     assert caller.ids(j) == ["you_said", "v-edu-5", "is_right"] and len(calls) == 1
 
 
-def test_side_question_is_answered_then_the_same_question_again(caller, ai):
+def test_side_question_is_answered_with_our_own_sentence_then_the_same_question(caller, ai):
     calls, replies = ai
     consent(caller)
-    replies.append({"intent": "question", "reply": "कोर्स की फ़ीस हमारे ज़िले के साथी बताएँगे।"})
+    replies.append({"intent": "question", "fact": "A6"})
     j = caller.say("इसमें पैसे लगेंगे क्या")
-    assert j["say"][0] == {"kind": "tts", "text": "कोर्स की फ़ीस हमारे ज़िले के साथी बताएँगे।"}
-    assert caller.ids(j)[1:] == ["q0"]
+    assert caller.ids(j) == ["fact-A6", "q0"]                       # pre-recorded; no AI words spoken
 
 
 def test_asking_for_a_person_by_voice(caller, ai):
@@ -89,12 +88,6 @@ def test_ai_off_or_failing_changes_nothing(caller, monkeypatch):
     monkeypatch.setattr(llm, "_sarvam", lambda s, u: (_ for _ in ()).throw(TimeoutError()))
     consent(caller)
     assert caller.ids(caller.say("कुछ समझ में नहीं आ रहा भाई")) == ["reask", "q0"]
-
-
-def test_long_replies_are_cut_at_a_sentence_end():
-    long = "पहला वाक्य है। " + "दूसरा बहुत लंबा वाक्य " * 20 + "।"
-    assert llm._short(long) == "पहला वाक्य है।"
-    assert llm._short("छोटा जवाब।") == "छोटा जवाब।"
 
 
 # --- open answers: any place, any job ------------------------------------------------
