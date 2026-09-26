@@ -12,6 +12,7 @@ Rules, not a model: every line can be traced to an answer, which is what a distr
 (and the jury) will ask for. The spoken lines are templates we wrote; the AI writes none of them.
 """
 
+from .prompts import pack
 from .recommend import PWD_SECTOR, Profile, concepts
 
 REAL = lambda t: t not in (None, "NONE", "OTHER", "LABOUR")      # noqa: E731  a trade, not "nothing"
@@ -32,7 +33,7 @@ def _name(t) -> str:
     return c["hi"] if c else str(t)
 
 
-def assess(p: Profile, result: dict, concerns: list | None = None) -> dict:
+def assess(p: Profile, result: dict, concerns: list | None = None, lang: str = "hi") -> dict:
     picks = result["eligible"]
     near = result["near_miss"]
     concerns = concerns or []
@@ -66,23 +67,22 @@ def assess(p: Profile, result: dict, concerns: list | None = None) -> dict:
 
     why = []                                               # at most two, so the call stays short
     if picks:
-        if pathway == "build_on_family_skill":
-            why.append("आपके परिवार के काम का अनुभव आपकी ताक़त है, इसलिए उसी हुनर को आगे बढ़ाने वाले कोर्स पहले रखे हैं।")
-        elif pathway == "grow_current_work":
-            why.append("आप जो काम अभी करते हैं, उसी को बेहतर करने वाले कोर्स पहले रखे हैं।")
+        if pathway in ("build_on_family_skill", "grow_current_work"):
+            why.append(pathway)
         if local_fit == "match":
-            why.append("आप जो सीखना चाहते हैं, उसकी आपके इलाके में माँग भी है, इसलिए उसे पहले रखा है।")
+            why.append("local_match")
         elif local_fit == "differs" and any(x.factors.get("local_demand", 0) >= 0.6 for x in picks):
-            why.append("आपकी रुचि और इलाके की माँग अलग-अलग है, इसलिए दोनों तरह के कोर्स रखे हैं।")
+            why.append("local_differs")
         if p.mobility in ("distance", "care_duty") or {"travel", "family"} & set(concerns):
-            why.append("आने-जाने और घर की ज़िम्मेदारी देखते हुए, कम समय वाले कोर्स पहले रखे हैं।")
+            why.append("short")
         if p.mobility == "physical" and any(x.sector == PWD_SECTOR for x in picks):
-            why.append("दिव्यांग साथियों के लिए बने कोर्स भी रखे हैं।")
+            why.append("pwd")
     why = why[:2]
+    lines = [pack(lang)["why"][k] for k in why]
 
     return {"pathway": pathway, "employment": p.employment_pref, "skill_gaps": gaps,
             "local_fit": local_fit, "constraints": constraints, "concerns": concerns,
-            "picks": [{"code": x.code, "reason": x.reason} for x in picks], "why": why}
+            "picks": [{"code": x.code, "reason": x.reason} for x in picks], "why_keys": why, "why": lines}
 
 
 if __name__ == "__main__":                                  # self-check on the real register

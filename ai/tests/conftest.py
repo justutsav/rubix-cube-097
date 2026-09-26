@@ -34,7 +34,8 @@ class Caller:
         j = r.json()
         for item in j["say"]:
             if item["kind"] == "prerendered":
-                assert item["id"] in CATALOGUE, f"prompt id {item['id']} missing from catalogue"
+                pid, _, lang = item["id"].partition(".")          # "lang_pick.bn": that language's clip
+                assert pid in (prompts.catalogue(lang) if lang else CATALOGUE), f"prompt id {item['id']} missing"
         return j
 
     def say(self, text):

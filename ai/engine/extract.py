@@ -29,9 +29,32 @@ _C = {"क": "k", "ख": "kh", "ग": "g", "घ": "gh", "ङ": "n", "च": "ch",
 _DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
 
 
+# Bengali and Odia share Devanagari's Unicode layout (all from Brahmi): the same letter sits at the
+# same offset in each block, so both map onto Devanagari and one matcher (translit, sound-alike,
+# fuzzy) serves all three. A few letters have no twin and are mapped by hand.
+_SCRIPTS = {0x0980: 0x80, 0x0B00: 0x200}                     # block start -> offset to Devanagari
+_SPECIAL = {"ৎ": "त्", "ৗ": "", "ୖ": "", "ୗ": "", "ୱ": "व", "ৰ": "र", "ৱ": "व"}
+
+
+def _to_devanagari(text: str) -> str:
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        if ch in _SPECIAL:
+            out.append(_SPECIAL[ch])
+        elif 0x0980 <= cp <= 0x09FF or 0x0B00 <= cp <= 0x0B7F:
+            base = 0x0980 if cp < 0x0B00 else 0x0B00
+            dev = chr(cp - _SCRIPTS[base])
+            out.append(dev if unicodedata.name(dev, "") else ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def norm(text: str) -> str:
-    """Lowercase, Devanagari digits -> ASCII, drop nukta, chandrabindu -> anusvara, no punctuation."""
-    t = unicodedata.normalize("NFC", text or "").lower().translate(_DIGITS)
+    """Bengali/Odia -> Devanagari, lowercase, digits -> ASCII, drop nukta, chandrabindu -> anusvara,
+    no punctuation."""
+    t = _to_devanagari(unicodedata.normalize("NFC", text or "")).lower().translate(_DIGITS)
     t = unicodedata.normalize("NFD", t).replace("़", "")          # nukta: ज़ -> ज
     t = unicodedata.normalize("NFC", t).replace("ँ", "ं")
     t = re.sub(r"[^\w\sऀ-ॿ]|[।॥]", " ", t)      # incl. "।" "॥": Sarvam ends every sentence with one
@@ -126,7 +149,9 @@ class Table:
 
 
 STOP = {norm(w) for w in "का की के है हैं हूँ हूं हो था थी करना करते करती करता कर में से पर को "
-          "और भी ही तो मैं हम ka ki ke hai hu main".split()}
+          "और भी ही तो मैं हम ka ki ke hai hu main "
+          "আমি আমার আমাকে আমরা আমাদের আছে আছি করি করে করেছি ছিল ছিলাম হয় এই সেই তো আর কিন্তু "
+          "ମୁଁ ମୋର ମୋତେ ଆମେ ଆମର ଅଛି ଅଛନ୍ତି କରେ କରିଛି ଥିଲା ଥିଲି ହୁଏ ଏହି ସେହି ଆଉ କିନ୍ତୁ".split()}
 
 
 def _content(text):
@@ -215,13 +240,16 @@ def leftover_confirmation(nbest) -> bool:
 @lru_cache(maxsize=1)
 def _guard():
     g = json.loads((LEX_PATH.parent / "guardrails.json").read_text(encoding="utf-8"))
-    return {"abuse": [norm(w) for w in g["abuse"]], "injection": [norm(w) for w in g["injection"]]}
+    return {"abuse": [norm(w) for w in g["abuse"]], "injection": [norm(w) for w in g["injection"]],
+            "allow": [norm(w) for w in g.get("allow", [])]}
 
 
 def is_abusive(text: str) -> bool:
     """Abuse in any text we heard or would speak. Devanagari stems match inside words ("चोद");
     short Latin words only as whole words ("mc" must not hit "much")."""
     t = norm(text)
+    for ok in _guard()["allow"]:
+        t = t.replace(ok, " ")
     words = set(t.split())
     for w in _guard()["abuse"]:
         if w.isascii():
@@ -249,6 +277,13 @@ def wants_repeat(nbest) -> bool:
 def _has_phrase(nbest, phrases) -> bool:
     t = f" {norm(nbest[0])} " if nbest else ""
     return any(f" {norm(p)} " in t for p in phrases)
+
+
+def language(nbest) -> str | None:
+    """'বাংলা', 'ओड़िया', 'हिंदी' said at the language menu -> 'bn' / 'or' / 'hi'."""
+    words = f" {norm(nbest[0])} " if nbest else ""
+    return next((lang for lang, names in lexicon().get("languages", {}).items()
+                 if any(f" {norm(n)} " in words for n in names)), None)
 
 
 def wants_go_back(nbest) -> bool:
@@ -284,7 +319,7 @@ def trades(nbest, limit=3):
     return [v for _, v in ranked[:limit]], min(s for s, _ in ranked[:limit]), "LEXICON"
 
 
-_CLASS_CUE = r"(?:वीं|वी|वा|वाँ|th|पास|तक|क्लास|कक्षा|जमात|pass|class)"
+_CLASS_CUE = r"(?:वीं|वी|वा|वाँ|th|पास|तक|क्लास|कक्षा|जमात|pass|class|श्रेणि|श्रेणी|पर्यन्त|पर्यंत)"
 
 
 def education(nbest):
@@ -307,7 +342,7 @@ def education(nbest):
     return (top[1], top[0], "LEXICON") if top else None
 
 
-_YEAR_CUE = r"(?:साल|वर्ष|बरस|saal|sal|years?|baras)"
+_YEAR_CUE = r"(?:साल|वर्ष|बरस|saal|sal|years?|baras|बछर|बर्ष)"      # बछर, बर्ष: Bengali, Odia
 
 
 def years(nbest):

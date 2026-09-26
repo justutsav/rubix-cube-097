@@ -66,13 +66,13 @@ class TurnRequest(BaseModel):
     locale_hint: str = "hi-IN"
 
 
-def _input(u) -> Input:
+def _input(u, lang="hi") -> Input:
     if u.kind == "audio":
         try:
             pcm = base64.b64decode(u.data, validate=True)
         except binascii.Error:
             raise HTTPException(422, "audio.data is not base64")
-        return Input("audio", nbest=asr.transcribe(pcm, u.rate))
+        return Input("audio", nbest=asr.transcribe(pcm, u.rate, lang))
     if u.kind == "text":
         return Input("text", nbest=[u.value])
     if u.kind == "dtmf":
@@ -82,7 +82,9 @@ def _input(u) -> Input:
 
 @app.post("/v1/turn")
 def turn(req: TurnRequest):
-    inp = _input(req.utterance)            # speech-to-text outside the lock: calls must not queue on it
+    known = STORE.session(req.channel_ref)                    # the call's language picks the speech model
+    lang = (known or {}).get("state", {}).get("lang", "hi")
+    inp = _input(req.utterance, lang)      # speech-to-text outside the lock: calls must not queue on it
     with STORE.lock:
         s = STORE.session(req.channel_ref)
         if s is None:

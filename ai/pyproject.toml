@@ -15,6 +15,8 @@ nqr = ["httpx", "openpyxl"]           # refresh the NQR snapshot (tools/import_n
 tts = ["gtts", "miniaudio"]           # gTTS fallback voice, no account
 piper = ["piper-tts==1.8.0", "miniaudio"]   # default voice: free, offline
 vosk = ["vosk==0.3.44"]              # offline speech-to-text, no account; 0.3.45 has no macOS wheel
+whisper = ["faster-whisper"]          # offline speech-to-text on the CPU (CTranslate2 int8)
+local = ["onnx-asr[cpu,hub]"]         # IndicConformer hi/bn/or on the CPU (AI4Bharat, MIT), int8
 
 [build-system]
 requires = ["setuptools>=68"]

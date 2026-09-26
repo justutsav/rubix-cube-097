@@ -39,7 +39,7 @@ def two_langs(monkeypatch):
 def test_language_menu_sets_the_call_language(caller, two_langs):
     c = caller
     j = c.turn("opened")
-    assert c.ids(j) == ["lang_select"]
+    assert c.ids(j) == ["lang_pick.hi", "lang_pick.bho"]        # each line in its own language
     j = c.key("2")
     assert j["lang"] == "bho" and c.ids(j) == ["welcome", "consent"]
     j = c.say("हँ जी")                                           # Bhojpuri yes

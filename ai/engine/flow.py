@@ -143,25 +143,26 @@ def ai_options(field):
     }[field]
 
 
+SPOKEN_SCRIPT = r"[^\u0900-\u097F\u0980-\u09FF\u0B00-\u0B7F ,]"   # Devanagari, Bengali, Odia only
 OPEN_KIND = {"q0": "place", "q2": "trade", "q3": "trade", "q4": "trade", "q7": "trade"}
 
 
-def open_value(field, ai):
+def open_value(field, ai, lang="hi"):
     """An open answer from the AI (any place, any job) -> stored value, or None if it fails the checks."""
     if OPEN_KIND.get(field) == "place":
         ok = places.check(ai.get("state"), ai.get("district"))
         if not ok:
             return None
         state, district = ok
-        hi = re.sub(r"[^\u0900-\u097F ,]", "", str(ai.get("hi") or ""))[:60] or None
+        hi = re.sub(SPOKEN_SCRIPT, "", str(ai.get("hi") or ""))[:60] or None
         if hi and extract.is_abusive(hi):
             hi = None
         return {"id": None, "district": district, "state": state, "hi": hi}
-    label = re.sub(r"[^\u0900-\u097F ]", "", str(ai.get("label") or "")).strip()[:30]
+    label = re.sub(SPOKEN_SCRIPT, "", str(ai.get("label") or "")).replace(",", "").strip()[:30]
     if not label:
         return None
     if extract.is_abusive(label):
-        label = "कोई और काम"                          # never read an abusive word back
+        label = "कोई और काम" if lang == "hi" else prompts.catalogue(lang)["v-trade-other"]   # never read abuse back
     known = recommend.sectors()
     custom = {"id": "CUSTOM", "label": label,
               "sectors": [x for x in (ai.get("sectors") or []) if x in known][:3],
@@ -274,7 +275,7 @@ class Flow:
             return None
         self.state["ai_used"] = used + 1
         return llm.understand(prompts.catalogue("hi").get(question_id, question_id), options, heard, describe,
-                              open_kind, recommend.sectors() if open_kind == "trade" else None)
+                              open_kind, recommend.sectors() if open_kind == "trade" else None, lang=self.lang)
 
     def _ai_yes_no(self, inp):
         """Yes/no question, word list failed. -> (handled, input to pass on)."""
@@ -401,7 +402,7 @@ class Flow:
         heard = extract.norm(inp.nbest[0]).split() if inp.nbest else []
         if len(heard) < 3:
             return False
-        cat = prompts.catalogue("hi")
+        cat = prompts.catalogue(self.lang if self.lang in prompts.FULL else "hi")
         said = set(extract.norm(" ".join(cat.get(i, i) for i in self.state.get("last_said", []))).split())
         return bool(said) and sum(w in said for w in heard) / len(heard) >= 0.7
 
@@ -424,19 +425,29 @@ class Flow:
     def _new(self, inp):
         if len(LANGS) > 1:
             self._go("LANG", tries=0)
-            self.say = ["lang_select"]
+            self.say = self._lang_menu()
             self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
             return
         self._begin()
 
     def _lang(self, inp):
         key = inp.digits[-1:] if inp.kind == "dtmf" else (extract.spoken_key(inp.nbest) or "")
-        if key in LANG_DTMF or self.state["tries"] >= 1:        # second miss: default language
-            self.state["lang"] = LANG_DTMF.get(key, LANGS[0])
+        named = extract.language(inp.nbest) if inp.kind in ("audio", "text") else None   # "বাংলা"
+        if named in LANGS or key in LANG_DTMF or self.state["tries"] >= 1:   # second miss: default
+            self.state["lang"] = named if named in LANGS else LANG_DTMF.get(key, LANGS[0])
             return self._begin()
         self.state["tries"] += 1
-        self.say = ["lang_select"]
+        self.say = self._lang_menu()
         self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
+
+    @staticmethod
+    def _lang_menu():
+        """'हिंदी के लिए एक दबाइए। বাংলার জন্য দুই টিপুন। …', each line in its own language's voice."""
+        return [f"lang_pick.{lang}" for lang in LANGS]
+
+    @property
+    def lang(self):
+        return self.state.get("lang", "hi")
 
     def _begin(self):
         if self.st.calls_today(self.s["phone_hash"]) > MAX_CALLS_PER_DAY:
@@ -571,8 +582,8 @@ class Flow:
             self.say = []                                  # "हाँ, सही है" said twice to the last read-back:
             self.state["last_said_keep"] = True            # not an answer to this question, keep listening
             return
-        if (got is None and st["mode"] == "ask" and inp.nbest and extract.yes_no(inp.nbest)
-                and len(extract.norm(inp.nbest[0]).split()) <= 3):
+        if (got is None and st["mode"] == "ask" and inp.nbest and extract.yes_no(inp.nbest) and not topic
+                and len(extract.norm(inp.nbest[0]).split()) <= 3):          # "पैसे नहीं हैं" is a problem, not a "no"
             # a bare "हाँ"/"नहीं" to an open question ("what do you want to learn?") is not a wrong
             # answer, it means "I didn't catch the question": offer the choices, no scolding, no try used
             return self._menu()
@@ -585,7 +596,7 @@ class Flow:
             if ai and ai["intent"] == "answer":
                 topic = ai.get("problem") or topic         # an answer that also carries a problem
                 opened = ai["value"] in ("PLACE", "NEW")
-                value = open_value(field, ai) if opened else from_ai(field, ai["value"])
+                value = open_value(field, ai, self.lang) if opened else from_ai(field, ai["value"])
                 if value is not None:
                     got = (value, 0.75, "LLM")
             elif ai and not (topic and ai["intent"] in ("unclear", "offtopic")) and self._ai_other(ai):
@@ -763,9 +774,10 @@ class Flow:
                    "factors": x.factors}
                   for x in result["eligible"] + ([result["near_miss"]] if result["near_miss"] else [])]
         self.st.save_recommendation(self.bid, result, ranked)
-        why = reasoning.assess(prof, result, self.st.concerns(self.bid))
+        why = reasoning.assess(prof, result, self.st.concerns(self.bid), self.lang)
         self.st.save_insight(self.bid, why)
-        self.say += ["recommend_intro", {"kind": "tts", "text": recommend.spoken(result, why["why"])}, "goodbye"]
+        self.say += ["recommend_intro", {"kind": "tts", "text": recommend.spoken(result, why["why"], self.lang)},
+                     "goodbye"]
         self._close(None)
 
     def _close(self, prompt, completed=True):
@@ -789,9 +801,10 @@ class Flow:
             self.say.append(st["field"] if st["mode"] == "ask" else
                             f"{st['field']}_menu" if st["mode"] == "menu" else
                             "is_right_short" if st.get("taught") else "is_right")
-        elif at in ("CONSENT", "RESUME", "LANG", "PICK", "GUARDIAN"):
-            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer",
-                             "LANG": "lang_select", "PICK": "readback_pick",
+        elif at == "LANG":
+            self.say += self._lang_menu()
+        elif at in ("CONSENT", "RESUME", "PICK", "GUARDIAN"):
+            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer", "PICK": "readback_pick",
                              "GUARDIAN": "q5_guardian"}[at])
         elif at == "READBACK":
             self._readback_start()

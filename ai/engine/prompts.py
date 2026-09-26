@@ -6,7 +6,10 @@ copy of the wording, here. Value clips ("सिलाई", "दसवीं") an
 the word list so a new trade is one lexicon entry, not a code change.
 """
 
+import json
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from .districts import load as districts
 from .extract import lexicon
@@ -48,7 +51,6 @@ BASE_HI = {
     "reask_gentle": "कोई बात नहीं, आराम से बताइए। या नीचे दिए नंबर दबाइए।",
     "is_right_short": "सही है?",
     "welcome": "नमस्ते! पीएम-अजय कौशल सहायता सेवा में आपका स्वागत है। किसी साथी से बात करनी हो, तो कभी भी हैश दबाइए, और पिछले सवाल पर लौटना हो, तो स्टार।",
-    "lang_select": "हिंदी के लिए एक दबाइए। भोजपुरी खातिर दू दबाईं।",
     "help_queued": "ज़रूर। हमारे साथी आपको जल्द फ़ोन करेंगे। तब तक चाहें, तो बात जारी रखिए।",
     "consent": "हम आपसे कुछ छोटे सवाल पूछेंगे, ताकि सही कोर्स ढूँढ सकें। आपकी आवाज़ रिकॉर्ड नहीं होगी। क्या शुरू करें? हाँ या नहीं बोलिए, या एक या दो दबाइए।",
     "close_polite": "कोई बात नहीं। जब चाहें, दोबारा फ़ोन कीजिए। धन्यवाद!",
@@ -141,34 +143,116 @@ YEARS_DTMF = {"1": 0, "2": 2, "3": 4, "4": 5, "5": 10}
 _NUM_HI = ["शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ"]
 
 
-def trade_menu_hi() -> str:
+# --- other languages ------------------------------------------------------------------
+# Bengali, Odia, …: one data file each (data/prompts_<lang>.json, DRAFT until a native speaker
+# checks it) holding every Hindi prompt plus the pieces the catalogue and the result are built from.
+DATA = Path(__file__).resolve().parent.parent / "data"
+LANGS = os.environ.get("ENGINE_LANGS", "hi").split(",")      # the language menu, in this order
+FULL = ("hi", "bn", "or")                                    # complete catalogues (bho: a few drafts)
+ORDER = ("hi", "bn", "or", "bho")                            # menu position for a language not in LANGS
+
+
+def _position(lang):
+    return (LANGS if lang in LANGS else ORDER).index(lang) + 1
+
+HI_PACK = {
+    "lang_pick": "हिंदी के लिए {num} दबाइए।",
+    "district_other": "दूसरा ज़िला", "years": "{n} साल", "year_less": "एक साल से कम",
+    "menu_item": "{name} के लिए {num}।", "district_menu_other": "दूसरे ज़िले के लिए नौ।",
+    "spoken": {
+        "none": "अभी आपके जवाबों से मेल खाता कोई कोर्स नहीं मिला। हमारे ज़िले के साथी आपसे संपर्क करेंगे।",
+        "count": "आपके लिए {n} कोर्स हैं।", "ordinals": ["पहला", "दूसरा", "तीसरा"],
+        "item": "{ord}: {title}, लेवल {level}{dur}। {reason}।", "duration": ", करीब {m} महीने का",
+        "near": "{title} के लिए आपको {gap} चाहिए।", "gap_years": "{n} साल और अनुभव",
+        "gap_class": "एक और कक्षा की पढ़ाई", "gap_other": "थोड़ी और तैयारी",
+        "finance": "हर कोर्स में पैसों के हिसाब किताब की ट्रेनिंग भी मिलती है।",
+        "self": "अपना काम शुरू करने के लिए पीएम अजय से, बैंक लोन के साथ, पचास हज़ार रुपये तक की मदद मिल सकती है।",
+        "halves": {}},
+    "reasons": {
+        "skill_transfer": "यह आपके परिवार या अभी के काम से जुड़ा है",
+        "aspiration": "यह वही काम है जो आप सीखना चाहते हैं",
+        "disability_sector": "यह कोर्स दिव्यांग साथियों के लिए बनाया गया है",
+        "local_demand": "आपके इलाके में इस काम की माँग है",
+        "fit": "यह आपकी पढ़ाई और अनुभव के हिसाब से सही है"},
+    "why": {
+        "build_on_family_skill": "आपके परिवार के काम का अनुभव आपकी ताक़त है, इसलिए उसी हुनर को आगे बढ़ाने वाले कोर्स पहले रखे हैं।",
+        "grow_current_work": "आप जो काम अभी करते हैं, उसी को बेहतर करने वाले कोर्स पहले रखे हैं।",
+        "local_match": "आप जो सीखना चाहते हैं, उसकी आपके इलाके में माँग भी है, इसलिए उसे पहले रखा है।",
+        "local_differs": "आपकी रुचि और इलाके की माँग अलग-अलग है, इसलिए दोनों तरह के कोर्स रखे हैं।",
+        "short": "आने-जाने और घर की ज़िम्मेदारी देखते हुए, कम समय वाले कोर्स पहले रखे हैं।",
+        "pwd": "दिव्यांग साथियों के लिए बने कोर्स भी रखे हैं।"},
+}
+
+
+@lru_cache(maxsize=None)
+def pack(lang: str) -> dict:
+    """Everything language-specific for `lang`; Hindi for anything a pack leaves out."""
+    if lang == "hi":
+        return HI_PACK
+    f = DATA / f"prompts_{lang}.json"
+    return {**HI_PACK, **json.loads(f.read_text(encoding="utf-8"))} if f.exists() else HI_PACK
+
+
+def number(n: int, lang: str = "hi") -> str:
+    """A number as the voice should say it: digits in Hindi (the voice reads them), words
+    elsewhere (the Odia voice cannot read digits)."""
+    words = lexicon().get("number_words", {}).get(lang)
+    return words[n] if words and 0 <= n < len(words) else str(n)
+
+
+def _menu_num(n: int, lang: str) -> str:
+    return _NUM_HI[n] if lang == "hi" else number(n, lang)
+
+
+def _name(item: dict, lang: str) -> str:
+    return item.get(lang) or item["hi"]
+
+
+def trade_menu(lang: str = "hi") -> str:
+    p = pack(lang)
     items = sorted((c for c in lexicon()["trades"] if c.get("dtmf")), key=lambda c: c["dtmf"])
-    return " ".join(f"{c['hi']} के लिए {_NUM_HI[c['dtmf']]}।" for c in items) + " " + BASE_HI["menu_other"]
+    return " ".join(p["menu_item"].format(name=_name(c, lang), num=_menu_num(c["dtmf"], lang))
+                    for c in items) + " " + catalogue_base(lang)["menu_other"]
 
 
-def district_menu_hi() -> str:
-    return " ".join(f"{d['hi']} के लिए {_NUM_HI[d['dtmf']]}।" for d in districts()) + " दूसरे ज़िले के लिए नौ।"
+def district_menu(lang: str = "hi") -> str:
+    p = pack(lang)
+    names = p.get("districts", {})
+    return " ".join(p["menu_item"].format(name=names.get(d["id"], d["hi"]).removesuffix(" ज़िला"),
+                                          num=_menu_num(d["dtmf"], lang)) for d in districts()) \
+        + " " + p["district_menu_other"]
+
+
+def catalogue_base(lang: str) -> dict:
+    return BASE_HI if lang == "hi" else pack(lang).get("prompts", {})
 
 
 @lru_cache(maxsize=None)
 def catalogue(lang: str = "hi") -> dict:
-    """Hindi: every prompt. Other languages: only what differs; channels fall back to Hindi."""
+    """hi, bn, or: every prompt. bho: only what differs; channels fall back to Hindi."""
     if lang == "bho":
-        return dict(BASE_BHO)
-    if lang != "hi":
-        raise KeyError(lang)                 # new language = a BASE_<lang> dict + lexicon surfaces
-    c = dict(BASE_HI)
+        c = dict(BASE_BHO)
+        c["lang_pick"] = "भोजपुरी खातिर {num} दबाईं।".format(num=_menu_num(_position(lang), "hi"))
+        return c
+    if lang not in FULL:
+        raise KeyError(lang)                 # new language = data/prompts_<lang>.json + lexicon surfaces
+    p = pack(lang)
+    c = dict(catalogue_base(lang))
     for t in lexicon()["trades"]:
-        c[f"v-trade-{t['id'].lower()}"] = t["hi"]
+        c[f"v-trade-{t['id'].lower()}"] = _name(t, lang)
+    names = p.get("districts", {})
     for d in districts():
-        c[f"v-dist-{d['id'].lower()}"] = f"{d['hi']} ज़िला"      # "गया" alone also means "went"
-    c["v-dist-other"] = "दूसरा ज़िला"
+        c[f"v-dist-{d['id'].lower()}"] = names.get(d["id"]) or f"{d['hi']} ज़िला"   # "गया" alone also means "went"
+    c["v-dist-other"] = p["district_other"]
     for y in range(0, 41):
-        c[f"v-years-{y}"] = "एक साल से कम" if y == 0 else f"{y} साल"
-    c["q0_menu"] = district_menu_hi()
+        c[f"v-years-{y}"] = p["year_less"] if y == 0 else p["years"].format(n=number(y, lang))
+    c["q0_menu"] = district_menu(lang)
     from .llm import fact_list                     # side-question answers are pre-recorded too
+    facts = p.get("facts", {})
     for f in fact_list():
-        c[f"fact-{f['id']}"] = f["hi"]
+        c[f"fact-{f['id']}"] = facts.get(f["id"]) or f["hi"]
     for q in ("q2", "q3", "q4", "q7"):
-        c[f"{q}_menu"] = trade_menu_hi()
+        c[f"{q}_menu"] = trade_menu(lang)
+    # "বাংলার জন্য দুই টিপুন", in that language's voice: the menu is one clip per language
+    c["lang_pick"] = p["lang_pick"].format(num=_menu_num(_position(lang), lang))
     return c
