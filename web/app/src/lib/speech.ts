@@ -126,6 +126,79 @@ export const ASR_LOCALE: Record<string, { tag: string; degraded: boolean }> = {
   en: { tag: 'en-IN', degraded: false },
 };
 
+// ---------------------------------------------------------------------------- server path
+
+/**
+ * Record on the device, transcribe on a server we choose.
+ *
+ * This is the path the spec always described and the one the dialect argument depends on: capture
+ * audio, send it to a provider selected by config, get back one or more hypotheses, and let the
+ * extraction ladder do the rest. The on-device recogniser below is the *fallback* — it exists for
+ * the moment there is no network, not as the architecture.
+ *
+ * The vendor key never ships in the APK. `VITE_ASR_URL` points at our own endpoint, which holds
+ * the credential; the handset only ever talks to us.
+ */
+const ASR_URL = import.meta.env.VITE_ASR_URL as string | undefined;
+
+export const serverAsrConfigured = Boolean(ASR_URL);
+
+async function recogniseServer(opts: RecogniseOptions, localeKey: string): Promise<RecogniseResult> {
+  const { startRecording, blobToBase64 } = await import('./record');
+  const started = performance.now();
+  const rec = await startRecording();
+
+  let settle: () => void = () => undefined;
+  const finished = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+
+  opts.register?.({
+    stop: () => settle(),
+    abort: () => {
+      rec.cancel();
+      settle();
+    },
+  });
+
+  // A live level readout, so the speaker can see she is being heard. There is no partial
+  // transcript on this path — nothing has been sent yet — and a silent screen during a long answer
+  // is exactly what makes people stop talking.
+  const meter = window.setInterval(() => {
+    if (rec.level() > 0.02) opts.onPartial?.('…');
+  }, 250);
+
+  // Hard cap. Sarvam bills by audio duration, and a phone left face-up in a pocket is a bill.
+  const cap = window.setTimeout(() => settle(), 25_000);
+
+  await finished;
+  window.clearInterval(meter);
+  window.clearTimeout(cap);
+
+  const capture = await rec.stop().catch(() => null);
+  if (!capture || capture.durationMs < 300) {
+    return { transcripts: [], engine: 'server', version: 'too-short', latencyMs: Math.round(performance.now() - started) };
+  }
+
+  const res = await fetch(String(ASR_URL), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      locale: localeKey,
+      rate: capture.sampleRate,
+      audioBase64: await blobToBase64(capture.wav),
+    }),
+  });
+  if (!res.ok) throw new Error(`asr ${res.status}`);
+  const body = (await res.json()) as { transcripts?: string[]; engine?: string; version?: string };
+  return {
+    transcripts: body.transcripts ?? [],
+    engine: body.engine ?? 'server',
+    version: body.version ?? '',
+    latencyMs: Math.round(performance.now() - started),
+  };
+}
+
 // ---------------------------------------------------------------------------- native path
 
 /**
@@ -254,7 +327,31 @@ async function recogniseNative(sr: any, opts: RecogniseOptions): Promise<Recogni
   };
 }
 
-export async function recognise(opts: RecogniseOptions): Promise<RecogniseResult> {
+/**
+ * Order of preference, and the reason for it:
+ *
+ *   1. **our server** — a provider we chose, the language we asked for, and alternates where the
+ *      provider returns them. Needs network.
+ *   2. **on-device recogniser** — one hypothesis, whatever model the handset happens to have.
+ *      Works when the server does not.
+ *   3. **browser Web Speech** — dev only; Android WebView does not implement it.
+ *
+ * `localeKey` is our own code ('bho', 'mai'), not a BCP-47 tag: the mapping to a provider's
+ * language code is a property of that provider and belongs beside it on the server.
+ */
+export async function recognise(opts: RecogniseOptions & { localeKey?: string }): Promise<RecogniseResult> {
+  const localeKey = opts.localeKey ?? 'hi';
+
+  if (ASR_URL && navigator.onLine) {
+    try {
+      return await recogniseServer(opts, localeKey);
+    } catch (e) {
+      // Network gone mid-answer. Fall back to the device rather than losing the turn — on a rural
+      // connection this is the normal case, not an exception.
+      console.warn('[asr] server path failed, falling back on device:', e instanceof Error ? e.message : e);
+    }
+  }
+
   const native = await getNative();
   if (native) return recogniseNative(native.sr, opts);
   return recogniseWeb(opts);

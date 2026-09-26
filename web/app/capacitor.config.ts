@@ -15,7 +15,11 @@ const config: CapacitorConfig = {
   android: {
     // Long, offline-first sessions: never let the WebView be backgrounded mid-interview by a
     // hardware-accelerated surface swap.
-    allowMixedContent: false,
+    // DEV ONLY. The WebView is served from https://localhost, so reaching the ASR service over
+    // http://localhost:5001 (via `adb reverse`) is mixed content and is blocked without this.
+    // A release build must set this back to false and point VITE_ASR_URL at an https endpoint —
+    // the audio on that wire is a beneficiary's voice.
+    allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: true,
   },

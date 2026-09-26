@@ -206,6 +206,7 @@ export function useInterview(channel: Channel = 'app') {
       const tag = ASR_LOCALE[s.locale]?.tag ?? 'hi-IN';
       const r = await recognise({
         locale: tag,
+        localeKey: s.locale,
         maxAlternatives: 5,
         signal: ctrl.signal,
         register: (ctl) => {

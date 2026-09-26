@@ -9,12 +9,21 @@
 export type Channel = 'ivr' | 'whatsapp' | 'app';
 
 /** Locales we author prompts for. `bho`/`mag`/`raj`/`cgh` have NO ASR model — see decisions.md. */
-export type Locale = 'hi' | 'bho' | 'mag' | 'raj' | 'cgh' | 'ta' | 'en';
+export type Locale = 'hi' | 'mai' | 'bho' | 'mag' | 'raj' | 'cgh' | 'ta' | 'en';
 
-export const SPOKEN_LOCALES: Locale[] = ['hi', 'bho', 'mag', 'raj', 'cgh', 'ta', 'en'];
+export const SPOKEN_LOCALES: Locale[] = ['hi', 'mai', 'bho', 'mag', 'raj', 'cgh', 'ta', 'en'];
 
-/** Locales that have a real ASR model behind them. The rest ride on the Hindi model + lexicon. */
-export const ASR_BACKED_LOCALES: Locale[] = ['hi', 'ta', 'en'];
+/**
+ * Locales with a real ASR model behind them. The rest ride on the Hindi model plus the lexicon.
+ *
+ * Maithili sits in the first group and the other four do not, and the reason is constitutional
+ * rather than technical: Maithili is in the Eighth Schedule, so Sarvam and Bhashini both carry it
+ * (`mai-IN`). Bhojpuri (5.05 crore speakers), Rajasthani (2.58 cr), Chhattisgarhi (1.62 cr) and
+ * Magahi (1.27 cr) are non-scheduled, and there is no commercial or open model for any of them —
+ * about 11 crore speakers with zero coverage. That gap is the whole reason the extraction ladder
+ * exists, and it is measured rather than papered over.
+ */
+export const ASR_BACKED_LOCALES: Locale[] = ['hi', 'mai', 'ta', 'en'];
 
 // ---------------------------------------------------------------------------- FSM
 

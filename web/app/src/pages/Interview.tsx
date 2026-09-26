@@ -25,6 +25,7 @@ type Gate = 'phone' | 'otp' | 'pick' | 'interview';
 
 const LOCALE_LABEL: Record<Locale, string> = {
   hi: 'हिंदी',
+  mai: 'मैथिली',
   bho: 'भोजपुरी',
   mag: 'मगही',
   raj: 'राजस्थानी',

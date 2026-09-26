@@ -35,13 +35,13 @@ export interface Prompt {
 const P = (id: string, text: Prompt['text'], review: Prompt['review'] = {}): Prompt => ({ id, text, review });
 
 /** Everything drafted here is DRAFT in Hindi unless a native speaker has signed it off. */
-const draft: Prompt['review'] = { hi: 'DRAFT', en: 'DRAFT', bho: 'DRAFT', mag: 'DRAFT', raj: 'DRAFT', cgh: 'DRAFT', ta: 'DRAFT' };
+const draft: Prompt['review'] = { hi: 'DRAFT', en: 'DRAFT', mai: 'DRAFT', bho: 'DRAFT', mag: 'DRAFT', raj: 'DRAFT', cgh: 'DRAFT', ta: 'DRAFT' };
 
 export const PROMPTS: Prompt[] = [
   // ---------------------------------------------------------------- entry
   P('lang.select.v1', {
-    hi: 'हिंदी के लिए एक दबाइए। भोजपुरी के लिए दो। मगही के लिए तीन। छत्तीसगढ़ी के लिए चार। तमिल के लिए पाँच।',
-    en: 'For Hindi press 1. Bhojpuri 2. Magahi 3. Chhattisgarhi 4. Tamil 5.',
+    hi: 'हिंदी के लिए एक दबाइए। मैथिली के लिए दो। भोजपुरी के लिए तीन। मगही के लिए चार। छत्तीसगढ़ी के लिए पाँच। तमिल के लिए छह।',
+    en: 'Hindi 1. Maithili 2. Bhojpuri 3. Magahi 4. Chhattisgarhi 5. Tamil 6.',
   }, draft),
 
   // ---------------------------------------------------------------- Q0 — registration metadata
@@ -49,6 +49,7 @@ export const PROMPTS: Prompt[] = [
     hi: 'सबसे पहले — आप किस गाँव और ब्लॉक में रहती हैं?',
     bho: 'पहिले ई बताईं — आप कवन गाँव अउर ब्लॉक में रहेलीं?',
     mag: 'पहिले ई बताबऽ — तोहर गाँव आउ ब्लॉक कवन हे?',
+    mai: 'सभसँ पहिने ई कहू — अहाँ कोन गाम आ प्रखंड मे रहै छी?',
     en: 'First — which village and block do you live in?',
   }, draft),
   P('q0.reask.v1', {
@@ -101,6 +102,7 @@ export const PROMPTS: Prompt[] = [
     hi: 'पहला सवाल। आप स्कूल कहाँ तक गई हैं? अगर नहीं गईं तो भी कोई बात नहीं — बहुत सी ट्रेनिंग के लिए स्कूल ज़रूरी नहीं है।',
     bho: 'पहिला सवाल। आप स्कूल कहाँ तक गइल बानी? अगर ना गइल बानी तब्बो कोई बात ना — बहुत ट्रेनिंग खातिर स्कूल जरूरी ना ह।',
     mag: 'पहिला सवाल। तूँ स्कूल कहाँ तक गेलऽ? नऽ गेलऽ तब्बो कोई बात नऽ।',
+    mai: 'पहिल प्रश्न। अहाँ स्कूल कतेक धरि गेलहुँ? नहि गेलहुँ तँ सेहो कोनो बात नहि।',
     en: 'First question. How far did you go in school? If you did not go, that is genuinely fine — many trainings need no schooling at all.',
   }, draft),
   P('q1.reask1.v1', {
@@ -118,6 +120,7 @@ export const PROMPTS: Prompt[] = [
     hi: 'आपके घर में परंपरा से कौन सा काम होता आया है? और आपने खुद वो काम कितने साल किया है?',
     bho: 'आपके घर में परंपरा से कवन काम होखत आइल बा? आउर आप खुद ऊ काम कतना साल कइले बानी?',
     mag: 'तोहर घर में परंपरा से कवन काम होबऽ हे? आउ तूँ खुद ऊ काम कतना साल कएलऽ?',
+    mai: 'अहाँक घर मे परम्परा सँ कोन काज होइत आएल अछि? आ अहाँ स्वयं ओ काज कतेक बरख कएलहुँ?',
     en: 'What work has your family traditionally done? And how many years have you done it yourself?',
   }, draft),
   P('q2.reask1.v1', {
@@ -165,6 +168,7 @@ export const PROMPTS: Prompt[] = [
     hi: 'अब बताइए — कौन सा काम सीखने का मन है? जो आपको अच्छा लगे, वही बताइए।',
     bho: 'अब बताईं — कवन काम सीखे के मन बा? जे आपके नीमन लागे, ऊहे बताईं।',
     mag: 'अब बताबऽ — कवन काम सीखे के मन हे?',
+    mai: 'आब कहू — कोन काज सिखबाक मोन अछि?',
     en: 'Now tell me — what work would you like to learn? Whatever appeals to you.',
   }, draft),
   P('q4.reask1.v1', {
@@ -326,7 +330,7 @@ export function say(
 
 /** Coverage report for the officer console's readiness panel: what still needs a native pass. */
 export function promptCoverage(): { locale: Locale; authored: number; reviewed: number; total: number }[] {
-  const locales: Locale[] = ['hi', 'bho', 'mag', 'raj', 'cgh', 'ta', 'en'];
+  const locales: Locale[] = ['hi', 'mai', 'bho', 'mag', 'raj', 'cgh', 'ta', 'en'];
   return locales.map((locale) => ({
     locale,
     authored: PROMPTS.filter((p) => p.text[locale]).length,
