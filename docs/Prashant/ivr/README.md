@@ -17,3 +17,4 @@ per `CONTRIBUTING.md`.
 | Date | Stage | What happened |
 |---|---|---|
 | 2026-09-26 | Planning | Master plan, build doc, testing plan, optimization plan written. Nothing built yet |
+| 2026-09-26 | Build step 1 | `channels/ivr/`: Exotel frame parser (`ivr/exotel.py`), WebSocket server logging every event (`ivr/server.py`), fake Exotel client (`tools/fake_exotel.py`), 2 tests passing. Branch `prashant/ivr-build` |
