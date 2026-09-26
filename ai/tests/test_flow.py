@@ -178,3 +178,11 @@ def test_yes_to_any_difficulty_opens_the_menu(caller):
     for d in ["1", "3", "1", "5", "1", "4"]:
         c.key(d)
     assert c.ids(c.say("हाँ।")) == ["q5_menu"]
+
+
+def test_asking_to_repeat_repeats_without_using_a_try(caller):
+    c = caller
+    consent_and_pin(c)
+    assert c.ids(c.say("एक बार वापस से बोलना।")) == ["q0"]
+    assert c.ids(c.say("समझ नहीं आया")) == ["q0"]
+    assert c.ids(c.say("कुछ भी नहीं समझ")) == ["reask", "q0"]          # still the first real miss

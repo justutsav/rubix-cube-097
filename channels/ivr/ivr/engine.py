@@ -11,7 +11,9 @@ import os
 import httpx
 
 URL = os.environ.get("ENGINE_URL", "http://localhost:8001")
-TIMEOUT = int(os.environ.get("ENGINE_TIMEOUT_MS", 1500)) / 1000
+# must exceed the engine's own worst case: Sarvam budget (2 s) + Vosk fallback + understanding.
+# The "hmm" filler covers the wait; a timeout here ends the call with "sorry".
+TIMEOUT = int(os.environ.get("ENGINE_TIMEOUT_MS", 4000)) / 1000
 PEPPER = os.environ.get("PHONE_PEPPER", "dev-only-pepper").encode()
 TTS_TIMEOUT = int(os.environ.get("TTS_TIMEOUT_MS", 6000)) / 1000
 

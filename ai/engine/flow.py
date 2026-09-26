@@ -111,6 +111,9 @@ class Flow:
         at = self.state.get("at", "NEW")
         if inp.kind == "opened" and at != "NEW":
             self._repeat()                         # channel reconnected: say the current prompt again
+        elif (inp.kind in ("audio", "text") and inp.nbest and at not in ("NEW", "DONE", "CLOSED")
+              and extract.wants_repeat(inp.nbest)):
+            self._repeat()                         # "फिर से बोलिए": same question, no try used up
         elif inp.kind == "dtmf" and HELP_KEY in inp.digits and self.bid and at not in ("DONE", "CLOSED"):
             self.st.callback_request(self.bid, self.s["id"], at)
             self.say = ["help_queued"]

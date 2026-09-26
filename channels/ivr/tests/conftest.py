@@ -91,6 +91,7 @@ def _no_local_env(monkeypatch):
     for k in ("STREAM_TOKEN", "MISSED_CALL_SECRET"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("BARGE_IN_GRACE_MS", "0")      # tests interrupt the very first prompt
+    monkeypatch.setenv("BARGE_IN_SPEECH_MS", "400")   # tests check the mechanism, not the tuned value
 
 
 @pytest.fixture

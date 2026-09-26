@@ -63,7 +63,9 @@ class Call:
         self.engine_done = False       # ai/ itself ended the session
         self.finished = False          # goodbye heard: hang up
         self.no_input_frames = _ms("NO_INPUT_TIMEOUT_MS", 6000) // 20
-        self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 400)   # 120 cut every prompt on a real line (echo/noise)
+        # 120 ms cut every prompt on a real line; 400 ms still cut questions on "हाँ जी"/"अच्छा",
+        # which Hindi speakers say while listening. Only a real attempt to talk interrupts.
+        self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 900)
         self.filler_after = _ms("FILLER_AFTER_MS", 1000) / 1000   # Sarvam often takes 0.7-0.8 s
         # the carrier's own announcement ("this call is being recorded") must not cut the welcome
         self.barge_grace_frames = _ms("BARGE_IN_GRACE_MS", 4000) // 20

@@ -154,3 +154,11 @@ Replaying call 3's saved clips through the fixed engine: 9 of 10 real answers un
 दिक्कत है", is fixed in this commit, as are: a plain "हाँ" to the difficulty question opening
 the menu, no barge-in in the first 4 s (Exotel's "this call is being recorded" cut the
 welcome), and the "hmm" filler only after 1 s (Sarvam often takes 0.7–0.8 s).
+
+Call 4 (after those fixes): "दसवीं", "इलेक्ट्रिशियन", "हाँ" understood first time. New findings:
+11 of 22 turns were barge-ins on "हाँ जी"/"अच्छा" said while listening, so questions were cut
+and answered blind → barge-in now needs 900 ms of speech. "एक बार वापस से बोलना" had no
+meaning → a repeat command that re-asks without using a try. A 9 s answer made Sarvam time out,
+Vosk fell back, and the adapter's 1.5 s engine wait expired first → call ended with "sorry"
+→ the adapter now waits 4 s (the filler covers it). Credits after 4 incoming calls (~8 min):
+unchanged at 500.

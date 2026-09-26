@@ -159,6 +159,7 @@ def tables() -> dict:
         "mobility": Table((s, v) for v, words in lex["mobility"].items() if v != "dtmf" for s in words),
         "employment_pref": Table((s, v) for v, words in lex["employment_pref"].items() if v != "dtmf"
                                  for s in words),
+        "repeat": Table((s, True) for s in lex.get("repeat", [])),
     }
     try:
         from . import districts
@@ -185,6 +186,12 @@ def yes_no(nbest):
     if len(ranked) > 1 and ranked[1][0] >= ranked[0][0] - 0.05:
         return None                                   # "हाँ... नहीं" — ambiguous, ask again
     return ranked[0][1], ranked[0][0], "LEXICON"
+
+
+def wants_repeat(nbest) -> bool:
+    """'फिर से बोलिए', 'समझ नहीं आया' … Only close matches: this skips an answer, so no guessing."""
+    ranked = best_over(tables()["repeat"], nbest[:1])
+    return bool(ranked) and ranked[0][0] >= 0.9
 
 
 def trade(nbest):

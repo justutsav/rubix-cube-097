@@ -66,3 +66,8 @@ def test_several_trades_and_nbest():
     # the right answer only in the second guess still wins, a little less sure
     v, conf, _ = x.trade(["कुछ और", "सिलाई"])
     assert v == "TAILORING" and conf < 1.0
+
+
+def test_repeat_requests_but_not_answers():
+    assert x.wants_repeat(["एक बार वापस से बोलना।"]) and x.wants_repeat(["फिर से बोलिए"])
+    assert not x.wants_repeat(["सिलाई का काम"]) and not x.wants_repeat(["हाँ जी"])

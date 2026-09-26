@@ -1,5 +1,5 @@
 {
- "version": "2026-09-26.5",
+ "version": "2026-09-26.6",
  "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
@@ -1022,5 +1022,31 @@
   "चालीस": 40,
   "बचपन": 10,
   "दू": 2
- }
+ },
+ "repeat": [
+  "फिर से बोलिए",
+  "फिर से बोलो",
+  "फिर से बोलना",
+  "फिर से बताइए",
+  "फिर से बताओ",
+  "दोबारा बोलिए",
+  "दोबारा बोलो",
+  "दोबारा बताइए",
+  "एक बार और",
+  "एक बार फिर",
+  "वापस से बोलना",
+  "वापस से बोलो",
+  "वापस से बोलिए",
+  "समझ नहीं आया",
+  "सुनाई नहीं दिया",
+  "क्या बोला",
+  "क्या बोले",
+  "क्या कहा",
+  "phir se bolo",
+  "dobara",
+  "repeat",
+  "again",
+  "फेर से बोलीं",
+  "ना समझनी"
+ ]
 }
