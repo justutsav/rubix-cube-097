@@ -1,0 +1,26 @@
+[project]
+name = "ivr"
+version = "0.1.0"
+description = "IVR channel adapter: Exotel Voicebot WebSocket <-> ai/ turn API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "python-multipart",
+    "webrtcvad-wheels",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "websockets"]
+prompts = ["gtts", "miniaudio", "httpx"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ivr"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

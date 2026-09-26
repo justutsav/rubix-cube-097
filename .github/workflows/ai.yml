@@ -1,0 +1,22 @@
+name: ai
+
+on:
+  push:
+    paths: ["ai/**", ".github/workflows/ai.yml"]
+  pull_request:
+    paths: ["ai/**", ".github/workflows/ai.yml"]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python 3.11 --extra dev pytest -q

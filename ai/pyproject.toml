@@ -1,0 +1,23 @@
+[project]
+name = "engine"
+version = "0.1.0"
+description = "Interview engine: FSM, field extraction, NSQF eligibility gate, recommender"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",                          # Sarvam speech APIs
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+nqr = ["httpx", "openpyxl"]           # refresh the NQR snapshot (tools/import_nqr.py)
+tts = ["gtts", "miniaudio"]           # dev text-to-speech, no account
+vosk = ["vosk==0.3.44"]              # offline speech-to-text, no account; 0.3.45 has no macOS wheel
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["engine"]

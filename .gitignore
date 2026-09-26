@@ -61,3 +61,4 @@ graphify-out/
 # Editor/agent scratch.
 .claude/
 .vercel/
+*.egg-info/

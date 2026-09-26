@@ -1,0 +1,11 @@
+{
+  "note": "Pilot districts offered at Q0. PLACEHOLDER choice pending a team decision (master plan §5, spec §9 BLOCKER 3); names only, no LGD codes until they are checked against the LGD directory. The 'dtmf' key is the menu digit; 9 is always 'other'.",
+  "districts": [
+    {"id": "SITAPUR", "hi": "सीतापुर", "state": "Uttar Pradesh", "lgd": null, "dtmf": 1,
+     "surface": ["सीतापुर", "sitapur"]},
+    {"id": "GAYA", "hi": "गया", "state": "Bihar", "lgd": null, "dtmf": 2,
+     "surface": ["गया", "gaya"]},
+    {"id": "BHOJPUR", "hi": "भोजपुर", "state": "Bihar", "lgd": null, "dtmf": 3,
+     "surface": ["भोजपुर", "आरा", "bhojpur", "arrah"]}
+  ]
+}

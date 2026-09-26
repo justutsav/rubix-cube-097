@@ -1,0 +1,22 @@
+name: docker
+
+on:
+  push:
+    paths: ["ai/**", "channels/ivr/**", "docker-compose.yml", ".github/workflows/docker.yml"]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build --wait
+      - uses: astral-sh/setup-uv@v6
+      - name: full keypad interview through the containers
+        working-directory: channels/ivr
+        run: |
+          uv run --python 3.11 --extra dev python tools/fake_exotel.py --url ws://localhost:8000/stream \
+            --keys 1,1234,1,3,1,5,1,4,4,1,1,1 --max-turns 40 | tee call.log
+          grep -q "adapter closed the call" call.log
+      - run: docker compose logs engine | grep -- "-> DONE"
+      - if: failure()
+        run: docker compose logs

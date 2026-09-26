@@ -1,0 +1,13 @@
+{
+  "source": "NSQF 2023 gazette notification, entry requirements for short-term training (docs/references/NSQF-Gazette-Notification-June2023.pdf), as extracted in docs/Utsav/research/01-the-customer.md §7",
+  "note": "Each level lists alternatives; meeting any one is enough. 'class' = minimum years of schooling, 'literate' = can read and write, 'exp' = years of relevant experience. Levels above 4 are out of scope for this beneficiary group and are never recommended.",
+  "max_level": 4,
+  "levels": {
+    "1":   [{"class": 0, "exp": 0}],
+    "2":   [{"class": 0, "exp": 0}],
+    "2.5": [{"class": 9, "exp": 0}, {"class": 8, "exp": 1}, {"class": 5, "exp": 4}, {"literate": true, "exp": 5}],
+    "3":   [{"class": 10, "exp": 0}, {"class": 9, "exp": 1}, {"class": 8, "exp": 2}, {"class": 5, "exp": 5}],
+    "3.5": [{"class": 11, "exp": 0}, {"class": 10, "exp": 1}, {"class": 8, "exp": 3}],
+    "4":   [{"class": 12, "exp": 0}, {"class": 11, "exp": 1}, {"class": 10, "exp": 2}]
+  }
+}
