@@ -1,0 +1,28 @@
+# Engine + IVR adapter on one box. Secrets come from ai/.env (gitignored), never from here.
+#   docker compose up --build            then Exotel (or tools/fake_exotel.py) -> ws://<host>:8000/stream
+#   SOFTPHONE=1 docker compose up        to test from a browser at http://localhost:8000/softphone
+services:
+  engine:
+    build: ai
+    env_file:
+      - path: ai/.env
+        required: false
+    environment:
+      ASR_PROVIDER: ${ASR_PROVIDER:-none}
+      TTS_PROVIDER: ${TTS_PROVIDER:-gtts}
+      PHONE_PEPPER: ${PHONE_PEPPER:-change-me}
+    volumes:
+      - engine-data:/data
+  ivr:
+    build: channels/ivr
+    ports:
+      - "8000:8000"
+    environment:
+      ENGINE_URL: http://engine:8001
+      PHONE_PEPPER: ${PHONE_PEPPER:-change-me}
+      SOFTPHONE: ${SOFTPHONE:-0}
+    depends_on:
+      engine:
+        condition: service_healthy
+volumes:
+  engine-data:
