@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Event:
-    kind: str                      # connected | start | media | dtmf | stop | unknown
+    kind: str                      # connected | start | media | dtmf | mark | stop | unknown
     stream_sid: str = ""
     call_sid: str = ""
     caller: str = ""               # start.from — hash it before it leaves the adapter
@@ -41,6 +41,8 @@ def parse(text: str) -> Event:
         return Event("media", stream_sid=sid, pcm=base64.b64decode(payload), raw=msg)
     if kind == "dtmf":
         return Event("dtmf", stream_sid=sid, digit=msg.get("dtmf", {}).get("digit", ""), raw=msg)
+    if kind == "mark":                 # Exotel echoes our mark once that audio has been played
+        return Event("mark", stream_sid=sid, raw=msg)
     if kind == "stop":
         s = msg.get("stop", {})
         return Event("stop", stream_sid=sid, call_sid=s.get("call_sid", ""),
