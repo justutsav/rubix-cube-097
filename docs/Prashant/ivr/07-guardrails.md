@@ -31,6 +31,13 @@ length-capped, abuse-filtered).
 | Cost attack | one number calling 100 times | 5 calls per number per day ("कल फिर कोशिश कीजिए"); 6 AI calls per call; 500 AI calls per day for everyone, then keypad/word list only | `MAX_CALLS_PER_DAY`, `LLM_MAX_PER_CALL`, `LLM_DAILY_BUDGET` |
 | Silent / noise calls | open line | Consent unanswered twice → goodbye; 10-minute cap | existing flow |
 
+**Local AI helper** (`LLM_PROVIDER=local`, the default since 2026-09-27): a matching model, it
+cannot produce text at all; its output goes through the same checks (`llm._checked`). Red team
+50/50. **Bengali and Odia:** abuse and injection phrases added to `guardrails.json`; an `allow`
+list removes ordinary words that contain a Hindi abuse stem once mapped to Devanagari (Bengali
+চোদ্দ = fourteen). `tests/test_languages.py` checks that none of our own prompts, in any language,
+trips a filter.
+
 ## Monitoring
 
 Every guardrail event is logged as a **count** — `injection`, `offtopic`, `abuse`, `cap_asides`,

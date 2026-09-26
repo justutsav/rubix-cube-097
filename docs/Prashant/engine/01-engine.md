@@ -163,6 +163,53 @@ current work = family trade → "यानी आप परिवार का �
 learn = what their area needs → "उसकी आपके इलाके में माँग भी है"; wants own work and has a skill
 → "अपना काम शुरू करने में यह बहुत काम आएगा".
 
+### Languages: Hindi, Bengali, Odia (2026-09-27)
+
+`ENGINE_LANGS=hi,bn,or` (the default in `scripts/ivr.sh`). The call starts with one clip per
+language, each in its own voice ("हिंदी के लिए एक दबाइए। বাংলার জন্য দুই টিপুন। ଓଡ଼ିଆ ପାଇଁ ତିନି
+ଦବାନ୍ତୁ।"); the caller presses or *says* the language ("বাংলা"). From then on the whole call is in
+that language: prompts, facts, menus, read-backs, the spoken result and its reasons.
+
+- **Wording:** `data/prompts_bn.json`, `data/prompts_or.json` hold every Hindi prompt, fact, menu
+  and result template. **DRAFT**: written from the Hindi, a native speaker must check them before
+  a pilot (`tests/test_languages.py` checks none is missing or left in Hindi).
+- **Understanding:** Bengali and Odia letters sit at the same Unicode offsets as Devanagari
+  (all from Brahmi), so `extract.norm` maps them onto Devanagari and the one matcher (spelling,
+  sound-alike, fuzzy) serves all three; cognates match for free (গয়া = गया). Bengali and Odia
+  words are in the same word lists (`lexicon.json`, DRAFT) and in the guardrail lists.
+- **Numbers** are spoken as words in Bengali and Odia (the Odia voice cannot read digits).
+- The AI helper is told the caller's language and writes read-back names in its script.
+
+### On this machine, no API (2026-09-27)
+
+Everything a call needs now runs on the laptop's CPU; Sarvam is a switch, not a dependency.
+
+| Job | Local (default) | Size in memory | Time | Cloud switch |
+|---|---|---|---|---|
+| Speech-to-text | AI4Bharat IndicConformer, one model per language (MIT), ONNX via `onnx-asr` | ~0.5 GB per language (`LOCAL_ASR_QUANT=int8`: ~0.15 GB, worse in noise) | ~40 ms per answer | `ASR_PROVIDER=sarvam` |
+| AI helper | `engine/matcher.py`: multilingual-e5-small (MIT), int8 ONNX, a *matching* model | ~0.12 GB | ~2 ms (p95 ~100 ms) | `LLM_PROVIDER=sarvam` |
+| Voice | Piper: Hindi `priyamvada`, Bengali `bn_BD-google` (CC BY-SA); Odia: Meta MMS exported to ONNX (CC-BY-NC) | ~0.1 GB per voice | Hindi/Bengali ~0.1–0.2 s, Odia ~0.8 s per sentence | `TTS_PROVIDER=sarvam` |
+
+Engine with all three languages loaded: **~2.4 GB** resident. One-time downloads: the speech
+models fetch themselves (Hugging Face, no account); `tools/get_local_ai.py` (matcher),
+`tools/get_piper_voice.py bn_BD-google-medium`, `tools/export_mms_tts.py ory` (Odia voice; needs
+PyTorch once, in a throwaway environment).
+
+**The local AI helper** picks, it never writes: the caller's sentence and our examples become
+vectors, and the closest of *our* items wins — an allowed answer, a fact id, a problem topic, a
+question to go back to, repeat / help / off-topic — only above a bar per kind, else "unclear"
+(the flow re-asks). One set of examples serves every language: the model matches meaning across
+languages. A place is matched by spelling against all 722 districts (Odia's joined "from",
+ଗଞ୍ଜାମରୁ, allowed) and read back in the caller's own word; a job not on our list goes to the
+closest official course title. The same checks run on its output as on Sarvam's (`llm._checked`).
+
+Measured on `tools/eval_local_ai.py` (46 sentences the word list misses, Hindi/Bengali/Odia):
+**local 84% understood, ~2 ms · Sarvam 89%, ~240 ms · neither ever stored a wrong kind as an
+answer**; red team (50 attacks) through the flow: 50/50 with the local helper, as with Sarvam.
+Where local is weaker: jobs not on our list (it cannot yet map "सोलर पैनल" to the solar course:
+the small model is weak across Hindi→English), and fine distinctions inside one topic. Use
+`LLM_PROVIDER=sarvam` when open job names matter more than cost.
+
 ## 4. Eligibility (`engine/eligibility.py`, `data/nsqf_entry.json`)
 
 Straight from the NSQF 2023 entry table. Any one alternative is enough:
@@ -249,5 +296,6 @@ much worse; the dialect test set (testing plan §6) is what gives real numbers.
 | Village/block list (LGD) | Spec asks for block level, not district | District only |
 | Age question | Needed for PM-DAKSH routing (spec §2.4 stage 0.5) | Not routed |
 | Training-centre locations | Distance gate for "can't travel far" | Short courses score higher instead |
-| Other languages | Hindi complete; Bhojpuri prompts and words are drafts | Hindi, draft Bhojpuri |
+| Native check of Bengali and Odia | Prompts, facts and word lists were written from the Hindi | DRAFT files, tests check completeness only |
+| Real Bengali/Odia recordings | Local speech-to-text was measured on Hindi phone audio and a voice round trip (bn 0.93, or 0.87) | Keypad always works |
 | Native-speaker prompts | Empathy requirement | Placeholder voice |

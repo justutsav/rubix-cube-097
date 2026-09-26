@@ -49,8 +49,12 @@ pids, the test database and the last URL live in `.run/` (gitignored).
 paste it into the Voicebot applet). For an address that never changes: a free ngrok account
 (one fixed domain) or a Cloudflare named tunnel on a domain you own.
 
-Settings live in gitignored files: `ai/.env` (`SARVAM_API_KEY`) and `channels/ivr/.env`
-(`STREAM_TOKEN`, later `EXOTEL_*`). One-time: `cd ai && uv run python tools/get_piper_voice.py`.
+Settings live in gitignored files: `channels/ivr/.env` (`STREAM_TOKEN`, later `EXOTEL_*`) and
+`ai/.env` (`SARVAM_API_KEY`, only needed if `ASR_PROVIDER`/`LLM_PROVIDER` is set to `sarvam`: by
+default everything runs on the laptop). Languages: Hindi, Bengali, Odia (`ENGINE_LANGS`). One-time
+downloads, all without an account (commands in the header of `scripts/ivr.sh`): Piper Hindi and
+Bengali voices, the Odia voice export, the local AI model; the speech models fetch themselves on
+first start (~0.5 GB each, a few minutes).
 
 ## 3. Test A — call the ExoPhone (done, works)
 

@@ -391,6 +391,7 @@ dev = [
 ]
 local = [
     { name = "onnx-asr", extra = ["cpu", "hub"] },
+    { name = "tokenizers" },
 ]
 nqr = [
     { name = "httpx" },
@@ -424,6 +425,7 @@ requires-dist = [
     { name = "openpyxl", marker = "extra == 'nqr'" },
     { name = "piper-tts", marker = "extra == 'piper'", specifier = "==1.8.0" },
     { name = "pytest", marker = "extra == 'dev'" },
+    { name = "tokenizers", marker = "extra == 'local'" },
     { name = "uvicorn", extras = ["standard"] },
     { name = "vosk", marker = "extra == 'vosk'", specifier = "==0.3.44" },
 ]

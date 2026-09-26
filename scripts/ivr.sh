@@ -8,10 +8,11 @@
 #   scripts/ivr.sh url        print the Exotel stream URL
 #   add --debug to start/restart to save caller audio + transcripts (test calls only)
 #
-# Defaults: Hindi, Bengali, Odia (ENGINE_LANGS); speech-to-text on this machine (ASR_PROVIDER=local,
-# or sarvam for the cloud); voices on this machine (Piper, MMS Odia).
-# Needs: uv, cloudflared, channels/ivr/.env (STREAM_TOKEN), ai/.env (SARVAM_API_KEY: only the AI
-# helper and ASR_PROVIDER=sarvam use it), and once:
+# Defaults: Hindi, Bengali, Odia (ENGINE_LANGS); everything on this machine, no API: speech-to-text
+# (ASR_PROVIDER=local), AI helper (LLM_PROVIDER=local), voices (Piper, MMS Odia). Set either to
+# sarvam for the cloud (ai/.env SARVAM_API_KEY).
+# Needs: uv, cloudflared, channels/ivr/.env (STREAM_TOKEN), and once:
+#   (cd ai && uv run --extra local --with onnx python tools/get_local_ai.py)
 #   (cd ai && uv run python tools/get_piper_voice.py && uv run python tools/get_piper_voice.py bn_BD-google-medium)
 #   Odia voice: see ai/tools/export_mms_tts.py
 set -euo pipefail
@@ -49,7 +50,7 @@ start_engine() {
   local dbg=""; [ "$DEBUG" = 1 ] && dbg="ENGINE_LOG_TRANSCRIPTS=1"
   ( cd "$ROOT/ai" && nohup env $dbg ENGINE_DB="$RUN/engine.db" \
       ASR_PROVIDER="${ASR_PROVIDER:-local}" TTS_PROVIDER="${TTS_PROVIDER:-piper}" \
-      ENGINE_LANGS="${ENGINE_LANGS:-hi,bn,or}" \
+      ENGINE_LANGS="${ENGINE_LANGS:-hi,bn,or}" LLM_PROVIDER="${LLM_PROVIDER:-local}" \
       uv run -q --python 3.11 --extra tts --extra vosk --extra piper --extra local \
       uvicorn engine.server:app --port "$ENGINE_PORT" </dev/null >>"$RUN/engine.log" 2>&1 &
     echo $! >"$RUN/engine.pid" ) >/dev/null 2>&1
@@ -120,5 +121,5 @@ case "$CMD" in
     echo "calls in progress: $(calls_active)"
     pid_alive tunnel && { echo "URL:"; stream_url; } ;;
   url) stream_url ;;
-  *) sed -n '2,19p' "$0"; exit 1 ;;
+  *) sed -n '2,17p' "$0"; exit 1 ;;
 esac

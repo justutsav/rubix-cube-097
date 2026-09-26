@@ -10,6 +10,37 @@ within each section. Synthetic voice = the engine's gTTS voice: good for compari
 (38 answers across all fields) · speech-to-text Vosk small Hindi (offline) · line conditions from
 `tools/phone_line.py` (300–3400 Hz band, G.711 mu-law, white noise, lost 20 ms packets).
 
+### 2026-09-27, local IndicConformer (AI4Bharat, on the laptop CPU) — same 38 answers
+
+Scorer fix first: since open answers a district is stored as `{"id": "GAYA", …}` and the tool
+compared it to `"GAYA"`, so every district answer counted as a miss (fixed in `accuracy.py`).
+The Vosk/Sarvam tables below predate open answers and are not affected.
+
+| Line condition | Answer understood, int8 model | Full precision (default) | Time p50 (full) |
+|---|---|---|---|
+| clean | 97% (37/38) | — | ~38 ms |
+| phone | 100% (38/38) | — | ~38 ms |
+| phone+noise20 | 79% (30/38) | 95% (36/38) | 37 ms |
+| phone+noise10 | 74% (28/38) | 76% (29/38) | 38 ms |
+| phone+loss5 | 100% (38/38) | — | ~38 ms |
+| phone+noise10+loss5 | 71% (27/38) | 84% (32/38) | 38 ms |
+
+**Reading it:** on clean and phone lines local equals or beats Sarvam (97–100%) and is ~8×
+faster (no network). In heavy noise it is below Sarvam (84% vs 89% worst line; 76% vs 92% at
+10 dB). Full precision was both better in noise *and* faster than int8 on the M5, for ~360 MB
+more per language, so it is the default. Misses in noise are the model; misses on clean lines
+were spelling variants now in the word list ("खेतीबारी", "सिलई").
+
+**Bengali and Odia** have no recordings yet. Voice → speech-to-text round trip on 10 prompts
+each (text match after both): Bengali 0.93, Odia 0.87, Hindi 0.90 — the voices are intelligible
+to a speech model, and the models hear their language. Short single words match worst.
+
+**Local AI helper** (`ai/tools/eval_local_ai.py`, 46 sentences in hi/bn/or the word list
+misses): local matcher 84%, p50 2 ms, p95 ~100 ms · Sarvam 89%, p50 ~240 ms · wrong kind stored
+as an answer: 0 for both. Red team through the flow with the local helper: 50/50.
+
+**Memory** (engine, all three languages, every model loaded): ~2.4 GB resident.
+
 ### 2026-09-26, Vosk vs Sarvam on the same audio (lexicon 2026-09-26.2)
 
 Same 38 answers, same noise (seeded per answer, reproducible), same word list; only

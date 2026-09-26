@@ -28,6 +28,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 app = FastAPI(title="PS 26097 interview engine")
 STORE = Store()
 asr.warm_up()                                  # models and connections ready before the first caller
+if llm.PROVIDER == "local":
+    from . import matcher
+    matcher.warm_up()
 tts.warm_up()
 MAX_AUDIO_B64 = 700_000        # ~20 s of 8 kHz 16-bit audio; longer is not an answer
 
@@ -165,5 +168,5 @@ def flags(days: int = 1):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "asr": asr.PROVIDER, "tts": tts.PROVIDER,
+    return {"ok": True, "asr": asr.PROVIDER, "tts": tts.PROVIDER, "ai": llm.PROVIDER,
             "nqr_rows": recommend.register()["count"], "nqr_sha": recommend.register()["sha256"][:12]}

@@ -155,3 +155,14 @@ and remembered for the question it answers; the caller can go back by words or t
 engine links answers out loud and explains its result with rules (`ai/engine/reasoning.py`), not
 a model, so every sentence traces to an answer. The speech policy is unchanged: the AI only picks
 topic and question ids. Details: `docs/Prashant/engine/01-engine.md` §3 and §5.
+
+## 2026-09-27 — local first: speech, AI helper and voices run on the machine; Bengali and Odia
+
+Speech-to-text (AI4Bharat IndicConformer), the AI helper (a multilingual *matching* model,
+multilingual-e5-small) and the voices (Piper; Meta MMS for Odia) now run on the CPU, offline, at no
+per-call cost. Measured against Sarvam on the same sets: equal or better on clean and phone
+lines, a few points worse in heavy noise and on open job names; 10–100× faster. Sarvam stays a
+one-setting switch. The AI helper keeps the speech policy by construction: a matching model
+cannot write text, it only picks our items. Bengali and Odia added as full catalogues; the
+wording and word lists are drafts until a native speaker checks them. Voice licences (MMS
+CC-BY-NC, Piper Hindi CC BY-NC-SA) must be confirmed before any paid deployment.

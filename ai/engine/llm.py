@@ -13,7 +13,8 @@ it may only:
 It can never skip consent, add a question, or name a course. Answers it picks are still
 read back to the caller; anything off the allowed list is thrown away.
 
-LLM_PROVIDER: sarvam (default when SARVAM_API_KEY is set) | none.
+LLM_PROVIDER: sarvam (default when SARVAM_API_KEY is set) | local (engine/matcher.py: a small
+matching model on this machine, no network) | none.
 """
 
 import json
@@ -113,7 +114,19 @@ def understand(question: str, options: dict, heard: list[str], describe: str | N
     if PROVIDER == "none" or not heard:
         return None
     try:
-        raw = _sarvam(SYSTEM.format(
+        if PROVIDER == "local":
+            from . import matcher
+            out = matcher.understand(question, options, heard, describe, open_kind, sectors, lang)
+        else:
+            out = json.loads(_ask_sarvam(question, options, heard, describe, open_kind, sectors, lang))
+    except Exception as e:                       # slow, down, or not JSON: the script carries on
+        log.warning("llm failed: %r", e)
+        return None
+    return _checked(out, options, open_kind)
+
+
+def _ask_sarvam(question, options, heard, describe, open_kind, sectors, lang):
+    return _sarvam(SYSTEM.format(
             template=TEMPLATE[open_kind].replace("{{", "{").replace("}}", "}"),
             question=question,
             options=describe or "\n".join(f"  {k}: {v}" for k, v in options.items()),
@@ -123,10 +136,10 @@ def understand(question: str, options: dict, heard: list[str], describe: str | N
             lang_note=LANG_NOTE.get(lang, ""),
             extra=EXTRA[open_kind].format(sectors=", ".join(sectors or [])) if open_kind else ""),
             f"<caller>{heard[0][:500]}</caller>")
-        out = json.loads(raw)
-    except Exception as e:                       # slow, down, or not JSON: the script carries on
-        log.warning("llm failed: %r", e)
-        return None
+
+
+def _checked(out: dict, options: dict, open_kind) -> dict:
+    """Whatever the helper returned (cloud or local): only allowed values and ids survive."""
     intent = out.get("intent") if out.get("intent") in INTENTS else "unclear"
     value = out.get("value")
     extra = {}
