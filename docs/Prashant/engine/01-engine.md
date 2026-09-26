@@ -204,7 +204,7 @@ much worse; the dialect test set (testing plan §6) is what gives real numbers.
 | Item | Why it matters | Until then |
 |---|---|---|
 | Bhashini as a second cloud speech provider | Sovereign option; Sarvam rate-limits bursts (429) | Sarvam → Vosk → keypad |
-| Fact sheet sign-off | The AI answers side questions from `data/facts_hi.md`; fees/stipend are not in it | "District worker will tell you" |
+| Fact sheet sign-off | Side questions are answered from `data/facts_hi.json`; fees/stipend are not in it | "District worker will tell you" (A0/A6) |
 | Pilot districts + local job data | Q0 is a placeholder list; local demand only uses the caller's own answer | Placeholder |
 | Village/block list (LGD) | Spec asks for block level, not district | District only |
 | Age question | Needed for PM-DAKSH routing (spec §2.4 stage 0.5) | Not routed |
