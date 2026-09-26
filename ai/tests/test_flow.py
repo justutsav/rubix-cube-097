@@ -204,3 +204,31 @@ def test_spoken_menu_digit_counts_as_yes(client):
     c = Caller(client)
     c.turn("opened")
     assert c.ids(c.say("एक।")) == ["ack", "q0"]                     # "हाँ के लिए एक" said aloud
+
+
+def test_our_own_prompt_heard_back_on_speakerphone_is_ignored(caller):
+    c = caller
+    consent(c)
+    c.key("1")                                                          # now asking q1
+    j = c.say("आपने कहाँ तक पढ़ाई की है")                                 # echo of q1 itself
+    assert c.ids(j) == [] and j["state"] == "FIELD:q1:ask"              # no "sorry", no try used
+    assert c.ids(c.say("कुछ भी नहीं समझ"))[0] == "reask"                # the first real miss
+    assert c.ids(c.say("पढ़ाई दसवीं तक की है")) [:2] == ["you_said", "v-edu-10"]   # real answer with prompt words
+
+
+def test_echo_of_the_consent_question_is_ignored(caller):
+    c = caller
+    c.turn("opened")
+    j = c.say("क्या हम शुरू करें हाँ या नहीं बोलिए")
+    assert c.ids(j) == [] and j["state"] == "CONSENT"
+    assert c.ids(c.say("हाँ"))[:2] == ["ack", "q0"]
+
+
+def test_menu_number_said_aloud_counts_as_the_key(caller):
+    c = caller
+    consent(c)
+    c.say("कुछ भी नहीं समझ")
+    assert c.ids(c.say("ऐसे ही"))[-1] == "q0_menu"
+    assert c.ids(c.say("नौ।"))[:2] == ["ack", "q1"]              # 9 = other district
+    b = STORE.q("select district from beneficiary where phone_hash=?", c.phone).fetchone()
+    assert b[0] == "OTHER"

@@ -156,10 +156,18 @@ class Flow:
             self._help()
         else:
             if self._yes_no_state() and inp.kind in ("audio", "text") and inp.nbest and not self._yes_no(inp):
+                if self._is_echo(inp):
+                    return self._listen_again()
                 handled, inp = self._ai_yes_no(inp)
                 if handled:
                     return self._reply()
             getattr(self, "_" + at.lower())(inp)
+        return self._reply()
+
+    def _listen_again(self):
+        """Nothing to say: we heard ourselves. Same state, same 'last said', no try used."""
+        self.say = []
+        self.state["last_said_keep"] = True
         return self._reply()
 
     # AI helper -----------------------------------------------------------------------
@@ -211,8 +219,20 @@ class Flow:
         self.say = ["help_queued"]
         self._repeat()                                     # then carry on where they were
 
+    def _is_echo(self, inp) -> bool:
+        """Speakerphone: the caller's audio can carry our own last prompt back to us. If what was
+        'heard' is mostly words we just said (and nothing else understood it), ignore it."""
+        heard = extract.norm(inp.nbest[0]).split() if inp.nbest else []
+        if len(heard) < 3:
+            return False
+        cat = prompts.catalogue("hi")
+        said = set(extract.norm(" ".join(cat.get(i, i) for i in self.state.get("last_said", []))).split())
+        return bool(said) and sum(w in said for w in heard) / len(heard) >= 0.7
+
     def _reply(self):
         st = self.state
+        if not st.pop("last_said_keep", False):
+            st["last_said"] = [x for x in self.say if isinstance(x, str)]   # for the echo check next turn
         return {"session_id": self.s["id"],
                 "state": ":".join(filter(None, (st.get("at"), st.get("field"), st.get("mode")))),
                 "resumed_from": self.resumed_from, "lang": self.state.get("lang", "hi"),
@@ -234,7 +254,7 @@ class Flow:
         self._begin()
 
     def _lang(self, inp):
-        key = inp.digits[-1:] if inp.kind == "dtmf" else ""
+        key = inp.digits[-1:] if inp.kind == "dtmf" else (extract.spoken_key(inp.nbest) or "")
         if key in LANG_DTMF or self.state["tries"] >= 1:        # second miss: default language
             self.state["lang"] = LANG_DTMF.get(key, LANGS[0])
             return self._begin()
@@ -340,12 +360,20 @@ class Flow:
         # speech (audio or text)
         if inp.nbest is None:                                  # no speech-to-text available
             return self._menu()
+        if st["mode"] == "menu":                               # "नौ" said instead of pressing 9
+            key = extract.spoken_key(inp.nbest)
+            if key is not None:
+                return self._field(Input("dtmf", digits=key))
         got = spec["extract"](inp.nbest) if inp.nbest else None
         if (got is None and st["mode"] == "ask" and inp.nbest and extract.yes_no(inp.nbest)
                 and len(extract.norm(inp.nbest[0]).split()) <= 3):
             # a bare "हाँ"/"नहीं" to an open question ("what do you want to learn?") is not a wrong
             # answer, it means "I didn't catch the question": offer the choices, no scolding, no try used
             return self._menu()
+        if got is None and inp.nbest and self._is_echo(inp):
+            self.say = []                                  # our own prompt came back: listen again
+            self.state["last_said_keep"] = True
+            return
         if got is None and inp.nbest:
             ai = self._ai(inp, field, *ai_options(field))
             if ai and ai["intent"] == "answer":
@@ -475,7 +503,7 @@ class Flow:
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _pick(self, inp):
-        key = inp.digits[-1:] if inp.kind == "dtmf" else ""
+        key = inp.digits[-1:] if inp.kind == "dtmf" else (extract.spoken_key(inp.nbest) or "")
         if key in {str(i) for i in range(1, 8)}:
             return self._ask(f"q{key}", editing=True)
         self.state["tries"] += 1

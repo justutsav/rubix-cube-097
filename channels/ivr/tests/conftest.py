@@ -92,6 +92,8 @@ def _no_local_env(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("BARGE_IN_GRACE_MS", "0")      # tests interrupt the very first prompt
     monkeypatch.setenv("BARGE_IN_SPEECH_MS", "400")   # tests check the mechanism, not the tuned value
+    monkeypatch.setenv("ECHO_LEARN_MS", "0")          # speakerphone tests turn echo measuring back on
+    monkeypatch.setenv("POST_PROMPT_GUARD_MS", "0")   # ...and the post-prompt echo guard
 
 
 @pytest.fixture

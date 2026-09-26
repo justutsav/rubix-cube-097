@@ -18,7 +18,7 @@ PROVIDER = os.environ.get("TTS_PROVIDER", "gtts")
 SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
 SARVAM_MODEL = os.environ.get("SARVAM_TTS_MODEL", "bulbul:v3")      # v2 was retired in 2026
 SARVAM_SPEAKER = os.environ.get("SARVAM_TTS_SPEAKER")                # unset = Sarvam's default voice
-SARVAM_PACE = float(os.environ.get("SARVAM_TTS_PACE", 1.2))           # 1.2: ~45% shorter than the gTTS prompts
+SARVAM_PACE = float(os.environ.get("SARVAM_TTS_PACE", 1.0))           # 1.2 felt too fast on a real call
 
 
 @lru_cache(maxsize=256)

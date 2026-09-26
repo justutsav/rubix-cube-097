@@ -73,3 +73,9 @@ def test_several_trades_and_nbest():
 def test_repeat_requests_but_not_answers():
     assert x.wants_repeat(["एक बार वापस से बोलना।"]) and x.wants_repeat(["फिर से बोलिए"])
     assert not x.wants_repeat(["सिलाई का काम"]) and not x.wants_repeat(["हाँ जी"])
+
+
+def test_spoken_menu_keys():
+    assert x.spoken_key(["नौ।"]) == "9" and x.spoken_key(["शून्य"]) == "0" and x.spoken_key(["3"]) == "3"
+    assert x.spoken_key(["नंबर तीन"]) == "3"
+    assert x.spoken_key(["दसवीं तक"]) is None and x.spoken_key(["हाँ"]) is None

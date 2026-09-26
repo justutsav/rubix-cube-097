@@ -188,6 +188,23 @@ def yes_no(nbest):
     return ranked[0][1], ranked[0][0], "LEXICON"
 
 
+_KEY_WORDS = {"शून्य": "0", "जीरो": "0", "ज़ीरो": "0", "एक": "1", "दो": "2", "तीन": "3", "चार": "4",
+              "पांच": "5", "पाँच": "5", "छह": "6", "छः": "6", "छे": "6", "सात": "7", "आठ": "8", "नौ": "9",
+              "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+              "seven": "7", "eight": "8", "nine": "9"}
+
+
+def spoken_key(nbest) -> str | None:
+    """A menu number said aloud instead of pressed: 'नौ', '9', 'नंबर तीन' -> '9' / '3'."""
+    words = [w for w in norm(nbest[0]).split() if w not in ("नंबर", "number", "दबाया", "वाला")] if nbest else []
+    if len(words) != 1:
+        return None
+    w = words[0]
+    if w.isdigit() and len(w) == 1:
+        return w
+    return {norm(k): v for k, v in _KEY_WORDS.items()}.get(w)
+
+
 def wants_repeat(nbest) -> bool:
     """'फिर से बोलिए', 'समझ नहीं आया' … Only close matches: this skips an answer, so no guessing."""
     ranked = best_over(tables()["repeat"], nbest[:1])

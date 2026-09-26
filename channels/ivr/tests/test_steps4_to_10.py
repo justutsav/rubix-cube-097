@@ -86,6 +86,45 @@ def test_no_barge_in_during_the_first_seconds(eng, monkeypatch):
     assert eng.seen == ["opened"] or eng.seen == ["opened", "hangup"]
 
 
+def _scaled(pcm, gain):
+    a = array.array("h", pcm)
+    return array.array("h", [int(v * gain) for v in a]).tobytes()
+
+
+def test_speakerphone_echo_does_not_interrupt_but_the_caller_does(eng, monkeypatch):
+    monkeypatch.setenv("ECHO_LEARN_MS", "300")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        echo = _scaled(SPEECH, 0.2)                      # our prompt coming back, quieter
+        line.audio(frames(echo + echo))                  # ~2.4 s of echo while q1 plays
+        line.audio(frames(SPEECH[:12800]))               # then the caller talks into the phone
+        heard, _ = line.hear(until="clear")              # that interrupts
+        assert len(voice(heard)) < len(clip(1, ms=2000))
+
+
+def test_speakerphone_echo_alone_lets_the_prompt_finish(eng, monkeypatch):
+    monkeypatch.setenv("ECHO_LEARN_MS", "300")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        line.audio(frames(_scaled(SPEECH, 0.2) * 2))
+        audio, _ = line.hear()                          # no clear: the whole q1 is heard
+        assert voice(audio) == clip(1, ms=2000)
+
+
+def test_echo_tail_right_after_a_prompt_is_not_an_answer(eng, monkeypatch):
+    monkeypatch.setenv("POST_PROMPT_GUARD_MS", "300")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        _, mark = line.hear()
+        line.played(mark)
+        line.audio(frames(SPEECH[:4000]) + [SILENCE] * 30)   # 250 ms tail of our own voice
+        line.audio([SILENCE] * 5)
+    assert eng.seen[:2] == ["opened", "hangup"] or eng.seen == ["opened"]   # no audio turn sent
+
+
 def test_key_press_during_a_prompt_stops_it(eng):
     with TestClient(server.app).websocket_connect("/stream") as ws:
         line = Line(ws)

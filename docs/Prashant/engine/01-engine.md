@@ -100,8 +100,14 @@ sentence end, never name a course; at most 2 side questions per question.
 answers; tests never call it. If Sarvam is slow or down the call simply carries on with
 re-ask and the keypad.
 
-**Voice:** every fixed prompt is recorded once in Sarvam `bulbul:v3` at 1.2× (`SARVAM_TTS_PACE`):
-Hindi prompt audio went from 377 s (Google placeholder) to 215 s. Only the result and AI replies
+**Voice:** every fixed prompt is recorded once in Sarvam `bulbul:v3` at natural speed
+(`SARVAM_TTS_PACE=1.0`; 1.2× felt too fast on a real call). "आपने कहाँ तक पढ़ाई की है?" takes
+1.4 s (the Google placeholder took 2.0 s).
+
+**Speakerphone:** the caller's audio can carry our own prompt back. The adapter only lets
+speech interrupt a prompt if it is clearly louder than that echo, and ignores the first 250 ms
+after a prompt; the engine ignores an "answer" that is mostly its own last prompt, without
+using up a try. A menu number said aloud ("नौ") counts as the key. Only the result and AI replies
 are spoken live. Yes/no questions say "हाँ या नहीं बोलिए, या एक या दो दबाइए" the first time,
 then just "सही है?".
 

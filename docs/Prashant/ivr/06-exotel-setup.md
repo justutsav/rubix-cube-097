@@ -115,7 +115,9 @@ Delete the WAVs afterwards.
 | `stream rejected: bad token` | Token in Exotel ≠ `STREAM_TOKEN` | Copy it again |
 | `start` but no `media` | Streaming not enabled on the account | Ask Exotel support |
 | Bot audio distorted | Chunk size | We send 3,200-byte chunks; report with the log |
-| Many `barge_in: true` in metrics | Echo / speakerphone / backchannel | Handset at the ear; raise `BARGE_IN_SPEECH_MS` |
+| Many `barge_in: true` in metrics | Echo / speakerphone / backchannel | Echo-aware barge-in is on; raise `BARGE_IN_ECHO_RATIO` or `BARGE_IN_SPEECH_MS` |
+| Bot "hears itself" on speaker (its own words as the answer) | Speakerphone echo | Post-prompt guard (250 ms) + the engine ignores answers that are mostly its own last prompt |
+| Voice too fast / slow | `SARVAM_TTS_PACE` (now 1.0; 1.2 felt too fast) | Change it, re-render prompts |
 | Engine errors → "sorry" | Engine down, wrong port, or slow | `curl localhost:8011/health`; `ENGINE_TIMEOUT_MS` |
 | Tunnel slow or resets in the first minutes | New quick tunnel settling | Wait a minute; restart cloudflared |
 | HTTP 530 from the tunnel | `--protocol http2` | Default protocol |
