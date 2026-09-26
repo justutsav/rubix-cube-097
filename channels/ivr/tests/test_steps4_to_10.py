@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import SILENCE, SPEECH, Line, clip, frames
+from conftest import voice, SILENCE, SPEECH, Line, clip, frames
 from ivr import exotel, server
 from ivr.vad import Endpointer
 
@@ -66,10 +66,10 @@ def test_talking_over_a_prompt_stops_it_and_counts_as_the_answer(eng):
         line.start()
         line.audio(frames(SPEECH[:4800]))              # caller starts talking over the 2 s q1
         heard, _ = line.hear(until="clear")
-        assert len(heard) < len(clip(1, ms=2000))      # q1 was cut short
+        assert len(voice(heard)) < len(clip(1, ms=2000))      # q1 was cut short
         line.audio(frames(SPEECH[4800:]) + [SILENCE] * 20)
         audio, _ = line.hear()
-        assert audio == clip(2)                        # the interrupting speech was the answer
+        assert voice(audio) == clip(2)                        # the interrupting speech was the answer
     assert eng.seen[:2] == ["opened", "audio"]
 
 
@@ -80,7 +80,7 @@ def test_key_press_during_a_prompt_stops_it(eng):
         line.dtmf("1")
         line.hear(until="clear")
         audio, _ = line.hear()
-        assert audio == clip(2)
+        assert voice(audio) == clip(2)
     assert eng.seen[:2] == ["opened", "dtmf"]
 
 
@@ -95,7 +95,7 @@ def test_silence_after_a_prompt_sends_a_timeout_turn(eng, monkeypatch):
         line.played(mark)
         line.audio([SILENCE] * 12)
         audio, _ = line.hear()
-        assert audio == clip(2)
+        assert voice(audio) == clip(2)
     assert eng.seen[:2] == ["opened", "timeout"]
 
 
@@ -108,7 +108,7 @@ def test_max_call_length_says_goodbye(eng, monkeypatch):
         line.played(mark)
         line.audio([SILENCE] * 55)
         audio, mark = line.hear()
-        assert audio == clip(6)                        # local goodbye, no engine needed
+        assert voice(audio) == clip(6)                        # local goodbye, no engine needed
         line.played(mark)
         with pytest.raises(Exception):
             ws.receive_text()
@@ -124,7 +124,7 @@ def test_slow_engine_plays_filler(eng, monkeypatch):
         line = Line(ws)
         line.start()
         audio, _ = line.hear()
-        assert audio == clip(4) + clip(1, ms=2000)     # "hmm" first, then q1
+        assert voice(audio) == clip(4) + clip(1, ms=2000)     # "hmm" first, then q1
 
 
 def test_engine_failure_apologises_and_hangs_up(eng):
@@ -136,7 +136,7 @@ def test_engine_failure_apologises_and_hangs_up(eng):
         line.played(mark)
         line.dtmf("1")
         audio, mark = line.hear()
-        assert audio == clip(5)                        # "sorry, we'll call you back"
+        assert voice(audio) == clip(5)                        # "sorry, we'll call you back"
         line.played(mark)
         with pytest.raises(Exception):
             ws.receive_text()
@@ -188,7 +188,7 @@ def test_missed_call_rejects_wrong_or_missing_key(missed):
 
 
 EXOTEL_ENV = {"EXOTEL_SID": "acme", "EXOTEL_API_KEY": "k", "EXOTEL_API_TOKEN": "t",
-              "EXOTEL_CALLER_ID": "08000000000", "EXOTEL_FLOW_URL": "http://my.exotel.com/flow"}
+              "EXOTEL_CALLER_ID": "08000000000", "EXOTEL_STREAM_URL": "wss://bot.example/stream"}
 
 
 def _exotel(monkeypatch, statuses):
@@ -210,6 +210,7 @@ def test_place_call_posts_to_exotel(monkeypatch):
     req = calls[0]
     assert req.url.path == "/v1/Accounts/acme/Calls/connect"
     assert b"From=09999999999" in req.content and b"CallerId=08000000000" in req.content
+    assert b"StreamType=bidirectional" in req.content and b"StreamUrl=" in req.content
 
 
 def test_place_call_retries_server_errors_not_client_errors(monkeypatch):
@@ -223,3 +224,15 @@ def test_place_call_without_settings_does_nothing(monkeypatch):
     for k in EXOTEL_ENV:
         monkeypatch.delenv(k, raising=False)
     assert not asyncio.run(exotel.place_call("0999"))
+
+
+def test_stream_token_required_when_set(eng, monkeypatch):
+    monkeypatch.setenv("STREAM_TOKEN", "t0ken")
+    c = TestClient(server.app)
+    with pytest.raises(Exception):
+        with c.websocket_connect("/stream") as ws:            # no token: closed before accept
+            ws.receive_text()
+    with c.websocket_connect("/stream?token=t0ken") as ws:     # right token: normal call
+        Line(ws).start()
+        audio, _ = Line(ws).hear()
+        assert voice(audio) == clip(1, ms=2000)

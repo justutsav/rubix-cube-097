@@ -74,9 +74,9 @@ def mark(stream_sid: str, name: str) -> str:
 
 
 def _cfg():
-    keys = ("EXOTEL_SID", "EXOTEL_API_KEY", "EXOTEL_API_TOKEN", "EXOTEL_CALLER_ID", "EXOTEL_FLOW_URL")
+    keys = ("EXOTEL_SID", "EXOTEL_API_KEY", "EXOTEL_API_TOKEN", "EXOTEL_CALLER_ID", "EXOTEL_STREAM_URL")
     c = {k: os.environ.get(k, "") for k in keys}
-    c["EXOTEL_SUBDOMAIN"] = os.environ.get("EXOTEL_SUBDOMAIN", "api.exotel.com")
+    c["EXOTEL_SUBDOMAIN"] = os.environ.get("EXOTEL_SUBDOMAIN", "api.in.exotel.com")   # India cluster
     return c
 
 
@@ -84,15 +84,16 @@ RETRY_BASE_S = 0.5
 
 
 async def place_call(to: str, transport: httpx.AsyncBaseTransport | None = None) -> bool:
-    """Ring `to` from our number and connect it to the Voicebot flow.
-    Exotel 'connect call to a flow' API. 3 tries with backoff; False if all fail."""
+    """Ring `to` from our ExoPhone and stream the call straight to our WebSocket.
+    Exotel 'Connect Voice AI' API: no flow needed. 3 tries with backoff; False if all fail."""
     c = _cfg()
     if not all(c[k] for k in ("EXOTEL_SID", "EXOTEL_API_KEY", "EXOTEL_API_TOKEN",
-                              "EXOTEL_CALLER_ID", "EXOTEL_FLOW_URL")):
+                              "EXOTEL_CALLER_ID", "EXOTEL_STREAM_URL")):
         log.warning("callback skipped: EXOTEL_* settings not set")
         return False
     url = f"https://{c['EXOTEL_SUBDOMAIN']}/v1/Accounts/{c['EXOTEL_SID']}/Calls/connect"
-    data = {"From": to, "CallerId": c["EXOTEL_CALLER_ID"], "Url": c["EXOTEL_FLOW_URL"]}
+    data = {"From": to, "CallerId": c["EXOTEL_CALLER_ID"], "StreamUrl": c["EXOTEL_STREAM_URL"],
+            "StreamType": "bidirectional", "TimeLimit": "900"}
     async with httpx.AsyncClient(auth=(c["EXOTEL_API_KEY"], c["EXOTEL_API_TOKEN"]),
                                  timeout=10, transport=transport) as client:
         for attempt in range(3):
@@ -101,7 +102,7 @@ async def place_call(to: str, transport: httpx.AsyncBaseTransport | None = None)
                 if r.status_code < 300:
                     log.info("callback placed")
                     return True
-                log.warning("callback attempt %d: HTTP %d", attempt + 1, r.status_code)
+                log.warning("callback attempt %d: HTTP %d %s", attempt + 1, r.status_code, r.text[:200])
                 if r.status_code < 500 and r.status_code != 429:
                     return False       # our request is wrong; retrying will not help
             except httpx.HTTPError as e:

@@ -132,7 +132,9 @@ async function call() {
   const down = downsampler(ctx.sampleRate);
 
   sid = "soft-" + Math.random().toString(36).slice(2, 10);
-  ws = new WebSocket(location.origin.replace(/^http/, "ws") + "/stream");
+  // pass the page's ?token=… through, for adapters started with STREAM_TOKEN
+  const token = new URLSearchParams(location.search).get("token");
+  ws = new WebSocket(location.origin.replace(/^http/, "ws") + "/stream" + (token ? "?token=" + encodeURIComponent(token) : ""));
   ws.onopen = () => {
     send({ event: "connected", protocol: "Call", version: "1.0.0" });
     send({ event: "start", stream_sid: sid, start: { stream_sid: sid,

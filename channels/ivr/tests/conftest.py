@@ -21,6 +21,11 @@ def frames(pcm):
     return [pcm[i:i + 320] for i in range(0, len(pcm), 320)]
 
 
+def voice(audio):
+    """Played audio without the silence Exotel's 3,200-byte chunks are padded with."""
+    return audio.replace(b"\x00", b"")
+
+
 def clip(n, ms=40):
     """A fake prompt: `ms` of one repeated byte, so tests can tell prompts apart."""
     return bytes([n]) * (ms * 16)

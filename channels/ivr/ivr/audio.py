@@ -1,9 +1,12 @@
-"""Outgoing audio: cut into 20 ms frames and send at real-time pace.
+"""Outgoing audio: cut into 200 ms chunks and send at real-time pace.
+
+Exotel's Voicebot rule: each chunk 3,200-100,000 bytes and a multiple of 320
+(stream-voicebot-applet docs). Smaller chunks distort, so a clip's last chunk is padded
+with silence up to 3,200 bytes.
 
 Why pace instead of dumping the whole prompt at once: Exotel buffers whatever we send.
-If a 4 s prompt is already sitting in its buffer, a barge-in `clear` has to fight
-it. Sending only LEAD_FRAMES ahead of real time keeps that buffer tiny, so stopping
-is instant (build step 5).
+Sending only LEAD_FRAMES ahead of real time keeps that buffer small, and `clear`
+empties it on barge-in (build step 5).
 """
 
 import asyncio
@@ -11,14 +14,16 @@ import asyncio
 from . import exotel
 
 RATE = 8000
-FRAME_MS = 20
-FRAME_BYTES = RATE * 2 * FRAME_MS // 1000   # 320 bytes: 16-bit mono
-LEAD_FRAMES = 5                             # 100 ms ahead of real time; tune on real calls
+FRAME_MS = 200
+FRAME_BYTES = RATE * 2 * FRAME_MS // 1000   # 3,200 bytes: Exotel's minimum chunk
+LEAD_FRAMES = 1                             # 200 ms ahead of real time; tune on real calls
 
 
 def frames(pcm: bytes):
+    """200 ms chunks; the last one padded with silence so every chunk is exactly 3,200 bytes."""
     for i in range(0, len(pcm), FRAME_BYTES):
-        yield pcm[i:i + FRAME_BYTES]
+        chunk = pcm[i:i + FRAME_BYTES]
+        yield chunk + b"\x00" * (FRAME_BYTES - len(chunk))
 
 
 class Player:

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import SILENCE, SPEECH, Line, clip, frames
+from conftest import voice, SILENCE, SPEECH, Line, clip, frames
 from ivr import engine, prompts, server
 from ivr.vad import Endpointer
 
@@ -46,20 +46,34 @@ def test_caller_hears_q1_answers_hears_q2(eng):
         line.start()
 
         audio, mark = line.hear()
-        assert audio == clip(1, ms=2000)                  # q1
+        assert voice(audio) == clip(1, ms=2000)                  # q1
         line.played(mark)
 
         line.audio(frames(SPEECH) + [SILENCE] * 20)       # caller answers by voice
         audio, mark = line.hear()
-        assert audio == clip(2)                           # q2
+        assert voice(audio) == clip(2)                           # q2
         line.played(mark)
 
         line.dtmf("1")                                    # answers by key
         audio, mark = line.hear()
-        assert audio == clip(3)                           # goodbye, terminal
+        assert voice(audio) == clip(3)                           # goodbye, terminal
         line.played(mark)
 
         with pytest.raises(Exception):                    # adapter hangs up
             ws.receive_text()
 
     assert eng.seen == ["opened", "audio", "dtmf"]        # no hangup turn after a finished call
+
+
+def test_exotel_sized_incoming_chunks_are_recut(eng):
+    """Exotel sends 3,200+ byte chunks; the adapter must still hear the answer."""
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        _, mark = line.hear()
+        line.played(mark)
+        pcm = SPEECH + SILENCE * 40
+        pcm += b"\x00" * (-len(pcm) % 3200)
+        line.audio([pcm[i:i + 3200] for i in range(0, len(pcm), 3200)])
+        audio, _ = line.hear()
+        assert voice(audio) == clip(2)

@@ -35,6 +35,7 @@ class Call:
         self.barged = False            # caller interrupted the last prompt
         self.quiet = 0                 # silent frames since the prompt finished
         self.frames = 0                # caller frames since call start
+        self.inbuf = b""               # Exotel's chunks can be any multiple of 320 bytes
         self.done = False              # no more input: goodbye queued
         self.engine_done = False       # ai/ itself ended the session
         self.finished = False          # goodbye heard: hang up
@@ -51,7 +52,10 @@ class Call:
             self.player = Player(self.send, self.stream_sid)
             await self._turn(engine.OPENED)
         elif ev.kind == "media":
-            await self._on_audio(ev.pcm)
+            self.inbuf += ev.pcm       # re-cut into the 20 ms frames the VAD and timers need
+            while len(self.inbuf) >= 320:
+                frame, self.inbuf = self.inbuf[:320], self.inbuf[320:]
+                await self._on_audio(frame)
         elif ev.kind == "dtmf" and not self.done:
             if self.speaking:
                 await self._barge_in()

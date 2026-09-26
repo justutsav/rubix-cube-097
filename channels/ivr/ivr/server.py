@@ -68,8 +68,19 @@ async def missed_call(request: Request, background: BackgroundTasks):
     return {"ok": True, "callback": "queued"}
 
 
+def _stream_allowed(ws: WebSocket) -> bool:
+    """STREAM_TOKEN set -> the connection must carry it as ?token=… (Exotel allows custom query
+    params on the stream URL). Unset = open, for local testing only."""
+    token = os.environ.get("STREAM_TOKEN", "")
+    return not token or hmac.compare_digest(ws.query_params.get("token", ""), token)
+
+
 @app.websocket("/stream")
 async def stream(ws: WebSocket):
+    if not _stream_allowed(ws):
+        await ws.close(code=1008)          # policy violation: wrong or missing token
+        log.warning("stream rejected: bad token")
+        return
     await ws.accept()
     call = Call(ws.send_text, BANK)
     media_bytes = 0

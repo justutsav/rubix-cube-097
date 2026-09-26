@@ -76,7 +76,7 @@ EXOTEL_API_KEY=
 EXOTEL_API_TOKEN=
 EXOTEL_SUBDOMAIN=api.exotel.com
 EXOTEL_CALLER_ID=        # our number shown on the callback
-EXOTEL_FLOW_URL=         # Voicebot flow used for the callback
+EXOTEL_STREAM_URL=       # wss://<public host>/stream?token=<STREAM_TOKEN>, used by the callback
 ENGINE_URL=http://localhost:8001    # ai/ service
 ENGINE_TIMEOUT_MS=1500
 PHONE_PEPPER=            # secret for HMAC of phone numbers; same value as ai/
@@ -217,18 +217,13 @@ Steps 1–7 need no Exotel account and no `ai/`.
 
 ---
 
-## 8. Exotel setup (step 9–10)
+## 8. Exotel setup
 
-1. Create trial account; note SID, API key, token.
-2. Buy/assign the trial virtual number.
-3. App Bazaar → new flow: **Voicebot** applet → URL `wss://<host>/stream`. (Streaming may
-   need to be enabled by Exotel support — ask.)
-4. Second flow on the number for incoming calls: **Passthru** applet → `https://<host>/missed-call`
-   → **Hangup** (so the caller is not charged; confirm Exotel treats it as a missed call).
-5. Set `EXOTEL_FLOW_URL` to the Voicebot flow's URL for outbound callbacks.
-6. Whitelist test phone numbers if the trial requires it.
-
----
+Moved to the step-by-step runbook: [06-exotel-setup.md](06-exotel-setup.md). Two things
+learned from Exotel's docs on 2026-09-26 and already built in: outgoing audio goes in
+3,200-byte (200 ms) chunks, Exotel's minimum; incoming chunks of any size are re-cut
+into 20 ms frames. The callback uses Exotel's direct-stream API (`StreamUrl`,
+`StreamType=bidirectional`), so no second flow is needed.
 
 ## 9. Run and deploy
 

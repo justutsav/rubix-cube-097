@@ -4,7 +4,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from conftest import Line, clip
+from conftest import voice, Line, clip
 from ivr import engine, server
 
 
@@ -29,4 +29,4 @@ def test_result_speech_plays_in_order_sentence_by_sentence(eng, monkeypatch):
         line.start()
         audio, mark = line.hear()
     # intro, sentence A, sentence B (C failed and is skipped), goodbye — in that order
-    assert audio == clip(2) + b"A" * 320 + b"B" * 320 + clip(3)
+    assert voice(audio) == clip(2) + b"A" * 320 + b"B" * 320 + clip(3)

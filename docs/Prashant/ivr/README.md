@@ -9,8 +9,9 @@ Everything about the phone channel, from demo to final. Read in order.
 | [03-testing.md](03-testing.md) | How we prove it works: test layers, scenarios, real-call checklist, stage gates |
 | [04-optimization.md](04-optimization.md) | How we keep it fast, cheap and reliable: targets, levers, review loop |
 | [05-measurements.md](05-measurements.md) | Measured numbers: accuracy by line quality, latency, load — each re-runnable |
+| [06-exotel-setup.md](06-exotel-setup.md) | Runbook: real phone call end to end on the free tier (Exotel + tunnel) |
 
-New docs continue the numbering (`06-…`). Update the log below with every piece of work,
+New docs continue the numbering (`07-…`). Update the log below with every piece of work,
 per `CONTRIBUTING.md`.
 
 ## Progress log
@@ -28,4 +29,5 @@ per `CONTRIBUTING.md`.
 | 2026-09-26 | Sarvam | `ASR_PROVIDER=sarvam` (`saarika:v2.5`, hi-IN, 8 kHz WAV): falls back to Vosk on error or > 2 s, then to the keypad. `TTS_PROVIDER=sarvam` (`bulbul:v3`; v2 is retired) falls back to gTTS. Key read from `ai/.env` (later line wins — the file has the key twice, the first is a placeholder). Connection warmed at start-up. Accuracy on the worst line: Vosk 68% vs Sarvam 89% answers understood; Sarvam rate-limits (429) back-to-back requests, fallback covers it. See 05-measurements.md |
 | 2026-09-26 | Language, help key, privacy | `ENGINE_LANGS=hi,bho` adds a language menu at call start; the call keeps its language and the IVR plays Bhojpuri prompts where they exist, Hindi otherwise. Bhojpuri prompts (17) and word forms are **DRAFTS** read by the Hindi placeholder voice: a native speaker must check them. `#` at any point logs a call-back request (`callback_request` table) and repeats the current question (0 and 9 are menu choices, so not 0 as first planned). Privacy test: no transcripts, raw PIN, half-typed PIN or audio columns in the database. Streaming speech-to-text skipped on purpose: measured p50/p95 already inside target (05-measurements.md). |
 | 2026-09-26 | Docker | `ai/Dockerfile`, `channels/ivr/Dockerfile`, root `docker-compose.yml` (secrets from `ai/.env`, engine port internal). CI workflow `docker` builds both images and completes a full keypad interview through them. All ten no-signup items done |
+| 2026-09-26 | Exotel readiness | Checked against Exotel's AgentStream docs: outgoing audio now 3,200-byte chunks (their minimum; 320 would distort), incoming chunks re-cut to 20 ms, callback switched to the direct-stream API (`StreamUrl`, bidirectional, `api.in.exotel.com`). `STREAM_TOKEN` guards the public stream URL. `tools/call_me.py` rings a phone now. Runbook: 06-exotel-setup.md. 35 IVR tests |
 
