@@ -112,13 +112,25 @@ class Table:
                     s = max(s, 0.95)
                 elif width == 1 and len(key) >= MIN_KEY and phonetic(gram) == key:   # phrases must match closer: "पता नहीं" is not "पढ़ाई नहीं"
                     s = max(s, 0.85)
-                elif len(tl) >= 6:                              # short words: "नहीं" is one letter off "नवीं"
-                    r = SequenceMatcher(None, g_tl, tl).ratio()
-                    if r >= 0.85:
-                        s = max(s, round(r * 0.9, 3))
+                else:
+                    # close spelling, on content words only: "इस ही का काम" must not
+                    # look like "मिस्त्री का काम" just because both end in "का काम"
+                    g_c, s_c = _content(gram), _content(n)
+                    if len(s_c) >= 6:                           # short words: "नहीं" is one letter off "नवीं"
+                        r = SequenceMatcher(None, g_c, s_c).ratio()
+                        if r >= 0.85:
+                            s = max(s, round(r * 0.9, 3))
             if s > best.get(_k(value), (0, None))[0]:
                 best[_k(value)] = (s, value)
         return best
+
+
+STOP = {norm(w) for w in "का की के है हैं हूँ हूं हो था थी करना करते करती करता कर में से पर को "
+          "और भी ही तो मैं हम ka ki ke hai hu main".split()}
+
+
+def _content(text):
+    return translit(" ".join(w for w in text.split() if w not in STOP))
 
 
 def _k(value):
@@ -231,6 +243,9 @@ def mobility(nbest):
     ranked = best_over(tables()["mobility"], nbest)
     ranked = [r for r in ranked if r[0] >= MIN_CONF]
     if not ranked:
+        # a bare "नहीं" to "any difficulty?" means none — but only when that is all they said
+        if nbest and len(norm(nbest[0]).split()) <= 2 and (yes_no(nbest) or ("",))[0] == "no":
+            return "none", 0.8, "LEXICON"
         return None
     specific = [r for r in ranked if r[1] != "none" and r[0] >= ranked[0][0] - 0.15]
     s, v = specific[0] if specific else ranked[0]      # "दूर नहीं जा सकती" beats a bare "नहीं"

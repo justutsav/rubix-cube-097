@@ -28,6 +28,11 @@ from engine import extract as x
     ("mobility", "बच्चों को देखना पड़ता है", "care_duty"),
     ("employment_pref", "अपना काम करना है", "self"),
     ("employment_pref", "नौकरी चाहिए", "wage"),
+    # found by the accuracy harness (channels/ivr/tools/accuracy.py)
+    ("yes_no", "नहीं जी गलत है", "no"),             # "जी" is politeness, not yes
+    ("mobility", "नहीं", "none"),                    # bare no to "any difficulty?"
+    ("mobility", "ही नहीं जा सकती", "distance"),      # misheard "दूर", still not "none"
+    ("trade", "राजगीर का काम", "CONSTRUCTION"),
 ])
 def test_extracts(fn, text, want):
     got = getattr(x, fn)([text])
@@ -42,6 +47,8 @@ def test_extracts(fn, text, want):
     ("education", "पता नहीं"),                        # not "पढ़ाई नहीं"
     ("education", "नहीं"),                            # not "नवीं" (9th)
     ("years", "बहुत दिन से"),
+    ("trade", "इस ही का काम सीखना है"),              # shared "का काम" is not a match
+    ("mobility", "स्कूल में पढ़ाती हूँ और कुछ नहीं"),     # a long answer with नहीं is not "none"
 ])
 def test_no_false_matches(fn, text):
     assert getattr(x, fn)([text]) is None

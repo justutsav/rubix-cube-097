@@ -162,3 +162,11 @@ def test_catalogue_serves_every_prompt(client):
     cat = client.get("/v1/prompts/hi").json()
     assert "q1" in cat and "v-trade-tailoring" in cat and "q2_menu" in cat
     assert client.get("/v1/prompts/xx").status_code == 404
+
+
+def test_extract_endpoint_for_measurement(client):
+    r = client.post("/v1/extract", json={"field": "q2", "utterance": {"kind": "text", "value": "silai ka kaam"}})
+    assert r.json()["value"] == "TAILORING" and r.json()["method"] == "LEXICON"
+    r = client.post("/v1/extract", json={"field": "yes_no", "utterance": {"kind": "text", "value": "नहीं"}})
+    assert r.json()["value"] == "no"
+    assert client.post("/v1/extract", json={"field": "q9", "utterance": {"kind": "text", "value": "x"}}).status_code == 422

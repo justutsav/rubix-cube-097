@@ -17,8 +17,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from . import asr, prompts, recommend, tts
-from .flow import Flow, Input
+from . import asr, extract, llm, prompts, recommend, tts
+from .flow import FIELDS, Flow, Input, _field, _normalise
 from .store import Store
 
 log = logging.getLogger("engine")
@@ -95,6 +95,26 @@ def turn(req: TurnRequest):
         STORE.save_session(s)
         log.info("turn session=%s kind=%s -> %s", s["id"][:8], req.utterance.kind, out["state"])
         return out
+
+
+class ExtractRequest(BaseModel):
+    field: str = Field(pattern=r"^(q0|q1|q2|q2_years|q3|q4|q5|q6|q7|yes_no)$")
+    utterance: Union[Audio, Text] = Field(discriminator="kind")
+
+
+@app.post("/v1/extract")
+def extract_one(req: ExtractRequest):
+    """Measurement only: one answer -> what the engine hears and understands, no session.
+    The accuracy harness (channels/ivr/tools/accuracy.py) scores these."""
+    inp = _input(req.utterance)
+    if not inp.nbest:
+        return {"nbest": inp.nbest, "value": None, "confidence": 0.0, "method": None}
+    fn = extract.yes_no if req.field == "yes_no" else _field(req.field)["extract"]
+    got = fn(inp.nbest) or (llm.classify(req.field, inp.nbest) if req.field in FIELDS else None)
+    value, conf, method = got if got else (None, 0.0, None)
+    if got and req.field in FIELDS:
+        value = _normalise(req.field, value, inp.nbest)          # same shape the flow stores
+    return {"nbest": inp.nbest, "value": value, "confidence": conf, "method": method}
 
 
 @app.get("/v1/prompts/{lang}")
