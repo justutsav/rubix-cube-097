@@ -16,7 +16,7 @@ def test_full_spoken_interview_ends_in_a_recommendation(caller):
         assert "you_said" in c.ids(c.say(answer))
         c.say("हाँ")
     j = c.say("बारह साल से सिलाई करती हूँ")                        # two fields in one answer
-    assert c.ids(j) == ["you_said", "v-trade-tailoring", "v-years-12", "is_right"]
+    assert c.ids(j) == ["you_said", "v-trade-tailoring", "v-years-12", "is_right_short"]   # long form taught once
     j = c.say("हाँ")
     assert c.ids(j)[-1] == "q3"                                       # q2_years not asked again
     for answer in ["मजदूरी", "सिलाई और ब्यूटी पार्लर", "बच्चों को देखना पड़ता है", "अपना काम", "सिलाई"]:
@@ -71,7 +71,7 @@ def test_correction_while_confirming(caller):
     c.key("1")                                                         # q0 by key
     c.say("दसवीं")
     j = c.say("नहीं आठवीं")                                            # "no, eighth"
-    assert c.ids(j) == ["you_said", "v-edu-8", "is_right"]
+    assert c.ids(j) == ["you_said", "v-edu-8", "is_right_short"]
 
 
 def test_refusing_consent_ends_politely_and_stores_nothing(caller):

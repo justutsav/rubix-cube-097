@@ -120,3 +120,12 @@ same phone; unclear twice = new). The 4-digit PIN is removed: on real calls call
 handset, whoever redials can continue another person's interview and hear its read-back —
 the disclosure spec §1.2 guarded against. Revisit before any pilot with real beneficiaries.
 
+## 2026-09-26 — the AI helper is on (Sarvam), grounded and capped
+
+Extends the hybrid decision above. When the word list fails, `sarvam-105b-conversations`
+(JSON mode, ~0.5 s) may pick an allowed value (still read back), answer a side question
+**only from `ai/data/facts_hi.md`**, or detect "repeat"/"I want a person". Unguarded, the model
+told a caller the course costs money; with the fact sheet it defers fees and stipend to the
+district worker. Cost cap: 6 AI calls per phone call, none for one-word answers. Prompts are
+recorded once in Sarvam's voice at 1.2×; only the result and AI replies use live voice.
+

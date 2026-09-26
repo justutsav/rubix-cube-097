@@ -54,11 +54,12 @@ uv run --extra dev pytest -q
 
 ## Prompts
 
-`prompts/hi/*.wav` are **placeholders** (Google Translate voice via gTTS, no account).
-Regenerate after editing the text in `tools/make_prompts.py`:
+`prompts/hi/*.wav` are recorded in the engine's voice (Sarvam Bulbul v3 at 1.2×). The wording
+lives in `ai/engine/prompts.py`; after changing it, run the engine with `TTS_PROVIDER=sarvam`
+and re-render (only changed prompts are redone; `--voice gtts` for the free placeholder voice):
 
 ```bash
-uv run --extra prompts python tools/make_prompts.py
+uv run --extra prompts python tools/make_prompts.py --engine http://localhost:8011
 ```
 
-Replace with native-speaker recordings before any real user hears them.
+A native-speaker recording of the same files is still the goal before a pilot.

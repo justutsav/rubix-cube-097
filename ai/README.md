@@ -40,6 +40,7 @@ uv run --extra dev pytest -q
 | `data/lexicon.json` | Spoken words → trades, education, yes/no… | authored; no course codes |
 | `data/weights.json` | Ranking weights, versioned | authored judgement calls |
 | `data/districts.json` | Pilot districts for Q0 | **placeholder** choice |
+| `data/facts_hi.md` | The only facts the AI may state | PM-AJAY guidelines, via `docs/Utsav/research/01-the-customer.md` |
 
 Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 
@@ -55,6 +56,10 @@ Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 | `SARVAM_STT_MODEL` | `saarika:v2.5` | |
 | `TTS_PROVIDER` | `gtts` | `gtts` = dev voice · `sarvam` = Bulbul, falls back to gtts |
 | `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` | `bulbul:v3` / Sarvam default | |
-| `LLM_PROVIDER` | `none` | AI helper for unmatched answers (needs an account) |
+| `LLM_PROVIDER` | `sarvam` if `SARVAM_API_KEY` is set, else `none` | AI helper for off-script answers and side questions |
+| `SARVAM_LLM_MODEL` | `sarvam-105b-conversations` | JSON mode, fast |
+| `LLM_MAX_PER_CALL` | `6` | cost cap: AI calls per phone call |
+| `LLM_TIMEOUT_MS` | `2500` | slower → carry on without it |
+| `SARVAM_TTS_PACE` | `1.2` | speaking speed of the Sarvam voice |
 | `ENGINE_LANGS` | `hi` | e.g. `hi,bho` asks for the language at call start (Bhojpuri is a draft) |
 | `ENGINE_LOG_TRANSCRIPTS` | unset | `1` logs what was heard per answer — **test calls only** |

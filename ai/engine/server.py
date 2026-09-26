@@ -19,7 +19,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from . import asr, extract, llm, prompts, recommend, tts
-from .flow import FIELDS, Flow, Input, _field, _normalise
+from .flow import FIELDS, Flow, Input, _field, _normalise, ai_options
 from .store import Store
 
 log = logging.getLogger("engine")
@@ -103,6 +103,7 @@ def turn(req: TurnRequest):
 class ExtractRequest(BaseModel):
     field: str = Field(pattern=r"^(q0|q1|q2|q2_years|q3|q4|q5|q6|q7|yes_no)$")
     utterance: Union[Audio, Text] = Field(discriminator="kind")
+    use_ai: bool = False
 
 
 @app.post("/v1/extract")
@@ -114,9 +115,15 @@ def extract_one(req: ExtractRequest):
         return {"nbest": inp.nbest, "value": None, "confidence": 0.0, "method": None,
                 "asr": asr.last_used()}
     fn = extract.yes_no if req.field == "yes_no" else _field(req.field)["extract"]
-    got = fn(inp.nbest) or (llm.classify(req.field, inp.nbest) if req.field in FIELDS else None)
+    got = fn(inp.nbest)
+    if not got and req.use_ai and req.field in FIELDS:                # costs an AI call: opt-in
+        ai = llm.understand(prompts.catalogue("hi").get(req.field, req.field), *ai_options(req.field),
+                            inp.nbest)
+        if ai and ai["intent"] == "answer":
+            from .flow import from_ai
+            got = (from_ai(req.field, ai["value"]), 0.75, "LLM")
     value, conf, method = got if got else (None, 0.0, None)
-    if got and req.field in FIELDS:
+    if got and req.field in FIELDS and method != "LLM":
         value = _normalise(req.field, value, inp.nbest)          # same shape the flow stores
     return {"nbest": inp.nbest, "value": value, "confidence": conf, "method": method,
             "asr": asr.last_used()}
@@ -134,12 +141,13 @@ class TtsRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     lang: str = "hi"
     rate: Literal[8000, 16000] = 8000
+    fallback: bool = True                  # False when recording prompts: fail instead of mixing voices
 
 
 @app.post("/v1/tts")
 def speak(req: TtsRequest):
     try:
-        pcm = tts.synth(req.text, req.lang, req.rate)
+        pcm = tts.synth(req.text, req.lang, req.rate, req.fallback)
     except Exception as e:
         log.warning("tts failed: %r", e)
         raise HTTPException(503, "tts unavailable")

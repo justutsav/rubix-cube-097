@@ -1,5 +1,5 @@
 {
- "version": "2026-09-26.7",
+ "version": "2026-09-26.8",
  "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
@@ -751,7 +751,18 @@
      "पढ़ना लिखना आता",
      "थोड़ा पढ़ना",
      "साक्षर",
-     "padhna likhna"
+     "padhna likhna",
+     "पहली",
+     "दूसरी",
+     "तीसरी",
+     "चौथी",
+     "पहली कक्षा",
+     "दूसरी कक्षा",
+     "तीसरी कक्षा",
+     "चौथी कक्षा",
+     "तीसरी चौथी",
+     "थोड़ा बहुत पढ़ा",
+     "थोड़ा पढ़ा"
     ]
    },
    {

@@ -62,7 +62,8 @@ Cheapest first; stops at the first hit:
    Devanagari→Latin transliteration (so `silai` = `सिलाई`), then by a sound-alike key
    (so `दरजी` = `दर्जी`), then by close spelling.
 2. **Number patterns**: "आठवीं", "8 तक", "दसवीं पास", "बारह साल".
-3. **AI helper** (`engine/llm.py`): only if 1–2 find nothing. Off by default (needs an account).
+3. **AI helper** (`engine/llm.py`, Sarvam `sarvam-105b-conversations`, JSON mode, ~0.3–0.9 s):
+   only when 1–2 find nothing. See "Off-script: the AI helper" below.
 4. **The caller confirms** whatever was picked.
 
 Guard rails found by testing: sound-alike matching only for single words of 5+ sounds,
@@ -75,6 +76,34 @@ guesses count slightly less.
 **Speech-to-text** (`engine/asr.py`, `ASR_PROVIDER`): `sarvam` (cloud, `saarika:v2.5`) → on
 error or > 2 s falls back to `vosk` (offline) → then the keypad. **Voice for the result**
 (`engine/tts.py`, `TTS_PROVIDER`): `sarvam` (`bulbul:v3`) → falls back to `gtts`.
+
+### Off-script: the AI helper
+
+The main route stays hard-coded, so ordinary answers cost nothing and take ~10 ms. The AI is
+asked only when the word list and number patterns fail on something longer than one word.
+It returns one of:
+
+| AI says | Engine does |
+|---|---|
+| `answer` + a value from the question's own list | Reads it back like any answer ("आपने कहा…, सही है?") |
+| `question` + a short reply | Speaks the reply (from `data/facts_hi.md` only), then asks the same question again |
+| `help` | Logs a call-back request, repeats the question |
+| `repeat` | Repeats the question |
+| `unclear` | Normal re-ask → keypad menu |
+
+It also decides yes/no when a caller answers a yes/no question in their own words ("चलिए शुरू
+करते हैं"). Guard rails: a value not on the list is thrown away; replies come only from the fact
+sheet (fees, stipend, centre, dates → "यह जानकारी हमारे ज़िले के साथी देंगे"), are cut at a
+sentence end, never name a course; at most 2 side questions per question.
+
+**Cost:** at most `LLM_MAX_PER_CALL` (6) AI calls per phone call, never for one-word or empty
+answers; tests never call it. If Sarvam is slow or down the call simply carries on with
+re-ask and the keypad.
+
+**Voice:** every fixed prompt is recorded once in Sarvam `bulbul:v3` at 1.2× (`SARVAM_TTS_PACE`):
+Hindi prompt audio went from 377 s (Google placeholder) to 215 s. Only the result and AI replies
+are spoken live. Yes/no questions say "हाँ या नहीं बोलिए, या एक या दो दबाइए" the first time,
+then just "सही है?".
 
 ## 4. Eligibility (`engine/eligibility.py`, `data/nsqf_entry.json`)
 
@@ -146,7 +175,7 @@ much worse; the dialect test set (testing plan §6) is what gives real numbers.
 | Item | Why it matters | Until then |
 |---|---|---|
 | Bhashini as a second cloud speech provider | Sovereign option; Sarvam rate-limits bursts (429) | Sarvam → Vosk → keypad |
-| AI helper model | Unmatched answers ("इंजीनियरिंग"), side questions, follow-ups | Menu, then keypad |
+| Fact sheet sign-off | The AI answers side questions from `data/facts_hi.md`; fees/stipend are not in it | "District worker will tell you" |
 | Pilot districts + local job data | Q0 is a placeholder list; local demand only uses the caller's own answer | Placeholder |
 | Village/block list (LGD) | Spec asks for block level, not district | District only |
 | Age question | Needed for PM-DAKSH routing (spec §2.4 stage 0.5) | Not routed |

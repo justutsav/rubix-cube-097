@@ -3,6 +3,7 @@ import uuid
 
 os.environ["ENGINE_DB"] = ":memory:"          # before engine.server creates its store
 os.environ.setdefault("ASR_PROVIDER", "none")
+os.environ["LLM_PROVIDER"] = "none"            # tests never call (or pay for) the real AI
 
 import pytest
 from fastapi.testclient import TestClient

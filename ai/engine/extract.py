@@ -224,6 +224,8 @@ def education(nbest):
         else:
             m = int(m.group(1))
         if isinstance(m, int) and 0 < m <= 12:
+            if m < 5:                                   # 1st-4th: reads and writes, below every NSQF cut-off
+                return {"class": 0, "literate": True}, round(0.9 * (1 - 0.05 * rank), 3), "REGEX"
             return {"class": m}, round(0.9 * (1 - 0.05 * rank), 3), "REGEX"
     top = _top("education", nbest)
     return (top[1], top[0], "LEXICON") if top else None

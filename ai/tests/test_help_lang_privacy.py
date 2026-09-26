@@ -25,7 +25,7 @@ def test_hash_during_confirm_repeats_the_confirm(caller):
     c = caller
     consent(c)
     c.say("सीतापुर")
-    assert c.ids(c.key("#")) == ["help_queued", "is_right"]
+    assert c.ids(c.key("#")) == ["help_queued", "is_right_short"]   # the long form was just heard
 
 
 # --- language choice -------------------------------------------------------------
