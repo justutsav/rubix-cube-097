@@ -1,5 +1,5 @@
 {
- "version": "2026-09-26.3",
+ "version": "2026-09-26.4",
  "note": "Authored mappings from spoken words to concepts. 'sectors' are NQR 'Sector Name' values verbatim; 'keywords' are matched against NQR title/occupation/description. No qualification codes here: those only ever come from data/nqr.json. Bhojpuri forms are mixed into the same lists (DRAFT, needs a native speaker).",
  "trades": [
   {
@@ -852,7 +852,19 @@
      "ba",
      "bsc",
      "bcom",
-     "college"
+     "college",
+     "बैचलर्स",
+     "बैचलर",
+     "ग्रेजुएशन",
+     "डिग्री",
+     "एमए",
+     "एम ए",
+     "पोस्ट ग्रेजुएट",
+     "bachelors",
+     "bachelor",
+     "graduation",
+     "degree",
+     "बीटेक"
     ]
    }
   ],

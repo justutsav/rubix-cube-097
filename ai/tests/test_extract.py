@@ -33,6 +33,12 @@ from engine import extract as x
     ("mobility", "नहीं", "none"),                    # bare no to "any difficulty?"
     ("mobility", "ही नहीं जा सकती", "distance"),      # misheard "दूर", still not "none"
     ("trade", "राजगीर का काम", "CONSTRUCTION"),
+    # found on the first real Exotel call: Sarvam ends every transcript with "।"
+    ("district", "गया।", "GAYA"),
+    ("yes_no", "हाँ।", "yes"),
+    ("education", "मैंने बैचलर्स तक पढ़ाई की है।", {"class": 15}),
+    ("years", "5 साल।", 5),
+    ("trade", "खेती।", "FARMING"),
 ])
 def test_extracts(fn, text, want):
     got = getattr(x, fn)([text])

@@ -65,10 +65,10 @@ def test_talking_over_a_prompt_stops_it_and_counts_as_the_answer(eng):
     with TestClient(server.app).websocket_connect("/stream") as ws:
         line = Line(ws)
         line.start()
-        line.audio(frames(SPEECH[:4800]))              # caller starts talking over the 2 s q1
+        line.audio(frames(SPEECH[:12800]))              # caller starts talking over the 2 s q1
         heard, _ = line.hear(until="clear")
         assert len(voice(heard)) < len(clip(1, ms=2000))      # q1 was cut short
-        line.audio(frames(SPEECH[4800:]) + [SILENCE] * 20)
+        line.audio(frames(SPEECH[12800:]) + [SILENCE] * 20)
         audio, _ = line.hear()
         assert voice(audio) == clip(2)                        # the interrupting speech was the answer
     assert eng.seen[:2] == ["opened", "audio"]

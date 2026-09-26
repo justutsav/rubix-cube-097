@@ -11,6 +11,7 @@ Run:  uv run uvicorn engine.server:app --port 8001
 import base64
 import binascii
 import logging
+import os
 from typing import Literal, Union
 
 from fastapi import FastAPI, HTTPException
@@ -91,6 +92,8 @@ def turn(req: TurnRequest):
                 STORE.save_session(s)
             return {"session_id": s["id"], "state": "HANGUP", "say": [], "expect": {"kind": "none"},
                     "terminal": True}
+        if inp.nbest is not None and os.environ.get("ENGINE_LOG_TRANSCRIPTS") == "1":
+            log.info("debug: heard %s (asr=%s)", inp.nbest[:3], asr.last_used())   # test calls only
         out = Flow(STORE, s, req.channel).step(inp)
         STORE.save_session(s)
         log.info("turn session=%s kind=%s -> %s", s["id"][:8], req.utterance.kind, out["state"])

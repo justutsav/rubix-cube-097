@@ -20,6 +20,29 @@ def _ms(name, default):
     return int(os.environ.get(name, default))
 
 
+def _debug_save(stream_sid, turn, pcm):
+    """IVR_DEBUG_DIR set: keep each caller utterance as a WAV, for tuning on a real line.
+    Off by default and for test calls only: product calls must not store audio."""
+    folder = os.environ.get("IVR_DEBUG_DIR")
+    if not folder:
+        return
+    import array
+    import math
+    import wave
+    from pathlib import Path
+
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    path = Path(folder) / f"{stream_sid[-8:]}-{turn:02d}.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(pcm)
+    a = array.array("h", pcm)
+    rms = math.sqrt(sum(v * v for v in a) / max(len(a), 1))
+    log.info("debug: saved %s (%d ms, rms %.0f)", path.name, len(pcm) // 16, rms)
+
+
 class Call:
     def __init__(self, send, bank, lang="hi"):
         self.send = send
@@ -40,7 +63,7 @@ class Call:
         self.engine_done = False       # ai/ itself ended the session
         self.finished = False          # goodbye heard: hang up
         self.no_input_frames = _ms("NO_INPUT_TIMEOUT_MS", 6000) // 20
-        self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 120)
+        self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 400)   # 120 cut every prompt on a real line (echo/noise)
         self.filler_after = _ms("FILLER_AFTER_MS", 700) / 1000
         self.max_frames = _ms("MAX_CALL_SECONDS", 600) * 50
 
@@ -83,6 +106,7 @@ class Call:
             return                     # an utterance that ends mid-prompt is too short to count
 
         if pcm:
+            _debug_save(self.stream_sid, self.turn_no, pcm)
             await self._turn(engine.audio(pcm), speech_ms=len(pcm) // 16)
         elif self.vad.in_speech:
             self.quiet = 0

@@ -118,7 +118,8 @@ async def stream(ws: WebSocket):
             if ev.kind == "media":
                 media_bytes += len(ev.pcm)
             elif ev.kind == "start":
-                log.info("start stream=%s call=%s", ev.stream_sid, ev.call_sid)   # never log the number
+                log.info("start stream=%s call=%s format=%s", ev.stream_sid, ev.call_sid,   # never log the number
+                         ev.raw.get("start", {}).get("media_format"))
             elif ev.kind == "dtmf":
                 log.info("dtmf stream=%s digit=%s", call.stream_sid, ev.digit)
             elif ev.kind == "stop":

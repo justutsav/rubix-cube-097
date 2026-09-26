@@ -34,7 +34,7 @@ def norm(text: str) -> str:
     t = unicodedata.normalize("NFC", text or "").lower().translate(_DIGITS)
     t = unicodedata.normalize("NFD", t).replace("़", "")          # nukta: ज़ -> ज
     t = unicodedata.normalize("NFC", t).replace("ँ", "ं")
-    t = re.sub(r"[^\w\sऀ-ॿ]", " ", t)
+    t = re.sub(r"[^\w\sऀ-ॿ]|[।॥]", " ", t)      # incl. "।" "॥": Sarvam ends every sentence with one
     return re.sub(r"\s+", " ", t).strip()
 
 
