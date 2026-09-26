@@ -1,45 +1,35 @@
-"""Generate PLACEHOLDER Hindi prompts and fake caller answers. Works on Linux, Windows, macOS.
+"""Render the engine's prompt catalogue into 8 kHz WAVs. Works on Linux, Windows, macOS.
 
-Uses gTTS (Google Translate's public voice: no account, needs internet once) and
-miniaudio (decodes the MP3 and resamples to 8 kHz, no ffmpeg). The output WAVs are
-committed, so only run this when a prompt's text changes.
+The wording lives in ai/ (GET /v1/prompts/{lang}); this only renders it for the phone.
+Uses gTTS (Google Translate's public voice: no account, needs internet) and miniaudio
+(decodes MP3 and resamples, no ffmpeg). Only prompts whose text changed are redone
+(prompts/<lang>/manifest.json), and prompts the engine no longer has are deleted.
 
-These exist only so the call loop can be built and heard before the real,
-native-speaker prompts are recorded (master plan §5). Replace, never ship.
+These are PLACEHOLDERS so the call can be built and heard. Replace with native-speaker
+recordings (same file names) before any real user hears them.
 
-    uv run --extra prompts python tools/make_prompts.py
+    uv run uvicorn engine.server:app --port 8001          # in ai/
+    uv run --extra prompts python tools/make_prompts.py   # here
 """
 
+import argparse
+import hashlib
 import io
+import json
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import httpx
 import miniaudio
 from gtts import gTTS
 
 ROOT = Path(__file__).resolve().parent.parent
 
-PROMPTS = {
-    "welcome":  "नमस्ते। यह पीएम अजय की ओर से कौशल सहायता सेवा है।",
-    "consent":  "हम आपसे कुछ सवाल पूछेंगे। क्या आप बात करने के लिए तैयार हैं? हाँ के लिए एक दबाएँ या बोलें।",
-    "q1":       "आपने कहाँ तक पढ़ाई की है?",
-    "q2":       "आपके परिवार का पारंपरिक काम क्या है?",
-    "q3":       "अभी आप क्या काम करते हैं?",
-    "q4":       "आपको कौन सा काम आता है, या क्या सीखना चाहते हैं?",
-    "q5":       "क्या आने जाने में या शरीर से कोई परेशानी है?",
-    "q6":       "आप अपना काम करना चाहेंगे, या नौकरी?",
-    "q7":       "आपके इलाके में किस काम की ज़्यादा माँग है?",
-    "ack":      "ठीक है।",
-    "hmm":      "हम्म।",
-    "nudge":    "क्या आप मुझे सुन पा रहे हैं?",
-    "result":   "धन्यवाद। आपके लिए सही कोर्स की जानकारी जल्द मिलेगी।",
-    "goodbye":  "बात करने के लिए धन्यवाद। नमस्ते।",
-    "sorry":    "माफ़ कीजिए, अभी तकनीकी दिक्कत है। हम आपको थोड़ी देर में वापस कॉल करेंगे।",
-}
-
+# Fake caller answers for tools/fake_exotel.py and the tests (not prompts).
 ANSWERS = {
     "answer_tailoring": "सिलाई का काम",
-    "answer_tenth":     "दसवीं पास",
+    "answer_tenth": "दसवीं पास",
 }
 
 
@@ -52,23 +42,45 @@ def trim(samples, threshold=300, margin=400):
     return samples[max(0, loud[0] - margin):loud[-1] + margin]
 
 
-def render(text, out):
+def render(text, out, lang="hi"):
     mp3 = io.BytesIO()
-    gTTS(text, lang="hi").write_to_fp(mp3)
+    gTTS(text, lang=lang).write_to_fp(mp3)
     samples = miniaudio.decode(mp3.getvalue(), output_format=miniaudio.SampleFormat.SIGNED16,
                                nchannels=1, sample_rate=8000).samples
-    pcm = trim(samples).tobytes()
     out.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(out), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(8000)
-        w.writeframes(pcm)
+        w.writeframes(trim(samples).tobytes())
+
+
+def sha(text):
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 if __name__ == "__main__":
-    for pid, text in PROMPTS.items():
-        render(text, ROOT / "prompts" / "hi" / f"{pid}.wav")
-    for name, text in ANSWERS.items():
-        render(text, ROOT / "tools" / "fixtures" / f"{name}.wav")
-    print(f"wrote {len(PROMPTS)} prompts, {len(ANSWERS)} answers")
+    p = argparse.ArgumentParser()
+    p.add_argument("--engine", default="http://localhost:8001")
+    p.add_argument("--lang", default="hi")
+    a = p.parse_args()
+
+    catalogue = httpx.get(f"{a.engine}/v1/prompts/{a.lang}", timeout=10).raise_for_status().json()
+    folder = ROOT / "prompts" / a.lang
+    manifest_path = folder / "manifest.json"
+    old = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    todo = {pid: t for pid, t in catalogue.items()
+            if old.get(pid) != sha(t) or not (folder / f"{pid}.wav").exists()}
+
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda kv: render(kv[1], folder / f"{kv[0]}.wav", a.lang), todo.items()))
+        list(pool.map(lambda kv: render(kv[1], ROOT / "tools" / "fixtures" / f"{kv[0]}.wav"),
+                      [kv for kv in ANSWERS.items()
+                       if not (ROOT / "tools" / "fixtures" / f"{kv[0]}.wav").exists()]))
+
+    stale = [f for f in folder.glob("*.wav") if f.stem not in catalogue]
+    for f in stale:
+        f.unlink()
+    manifest_path.write_text(json.dumps({pid: sha(t) for pid, t in sorted(catalogue.items())},
+                                        ensure_ascii=False, indent=0), encoding="utf-8")
+    print(f"{len(catalogue)} prompts: {len(todo)} rendered, {len(stale)} removed")

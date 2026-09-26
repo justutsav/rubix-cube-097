@@ -7,6 +7,7 @@ frame count is a clock that needs no extra task and makes tests instant.
 import asyncio
 import logging
 import os
+import re
 
 from . import engine, exotel, metrics, prompts
 from .audio import Player
@@ -26,6 +27,7 @@ class Call:
         self.lang = lang
         self.stream_sid = self.call_sid = self.phone = ""
         self.player: Player | None = None
+        self.feeder: asyncio.Task | None = None   # queues this turn's audio into the player
         self.vad = Endpointer()
         self.busy = asyncio.Lock()     # one turn in flight at a time
         self.turn_no = 0
@@ -92,7 +94,7 @@ class Call:
         async with self.busy:
             loop = asyncio.get_running_loop()
             t0 = loop.time()
-            task = asyncio.create_task(engine.turn(self.call_sid, self.phone, self.lang, utterance))
+            task = asyncio.create_task(self._fetch(utterance))   # filler also covers result TTS
             filler = False
             if not (await asyncio.wait({task}, timeout=self.filler_after))[0]:
                 filler = self._play([{"kind": "prerendered", "id": "hmm"}], mark=False)
@@ -107,7 +109,7 @@ class Call:
                 return
             engine_ms = round((loop.time() - t0) * 1000)
             self.turn_no += 1
-            self._play(reply.get("say", []))
+            self._play(reply["say"])
             self.done = self.engine_done = bool(reply.get("terminal"))
             if self.done and not self.speaking:
                 self.finished = True
@@ -116,26 +118,56 @@ class Call:
                          filler=filler, barge_in=self.barged)
             self.barged = False
 
+    async def _fetch(self, utterance):
+        reply = await engine.turn(self.call_sid, self.phone, self.lang, utterance)
+        reply["say"] = self._synthesise(reply.get("say", []))
+        return reply
+
+    def _synthesise(self, say):
+        """Start text-to-speech for the result, one sentence per request, all in parallel.
+        The first sentence is usually ready while the pre-recorded intro is still playing."""
+        out = []
+        for item in say:
+            if item.get("kind") == "tts":
+                parts = [p.strip() for p in re.split(r"(?<=[।.?!])\s+", item["text"]) if p.strip()]
+                item = {"kind": "pending",
+                        "tasks": [asyncio.create_task(engine.tts(p, self.lang)) for p in parts]}
+            out.append(item)
+        return out
+
     def _play(self, say, mark=True) -> bool:
-        clips = []
+        """Queue a turn's audio in order. The mark goes last, on its own, so it is sent even
+        if a text-to-speech sentence fails."""
+        if not say:
+            return False
+        self.speaking = True
+        self.feeder = asyncio.create_task(self._feed(say, self._mark() if mark else None))
+        return True
+
+    async def _feed(self, say, mark):
         for item in say:
             if item.get("kind") == "prerendered":
                 pcm = prompts.resolve(self.bank, item["id"], self.lang)
                 if pcm is None:
                     log.warning("missing prompt %s/%s", self.lang, item["id"])
                 else:
-                    clips.append(pcm)
-            else:
-                log.warning("tts not wired yet: %r", item.get("text", "")[:40])
-        for i, pcm in enumerate(clips):
-            last = mark and i == len(clips) - 1
-            self.player.play(pcm, mark=self._mark() if last else None)
-        if clips:
-            self.speaking = True
-        return bool(clips)
+                    self.player.play(pcm)
+            elif item.get("kind") == "pending":
+                for t in item["tasks"]:
+                    try:
+                        self.player.play(await t)
+                    except Exception as e:  # the result is saved in ai/; a worker can follow up
+                        log.warning("tts failed stream=%s: %r", self.stream_sid, e)
+        if mark:
+            self.player.play(b"", mark=mark)
+
+    async def _stop_audio(self):
+        if self.feeder:
+            self.feeder.cancel()
+        await self.player.stop()
 
     async def _barge_in(self):
-        await self.player.stop()
+        await self._stop_audio()
         self.speaking = False
         self.barged = True
         self.quiet = 0
@@ -146,7 +178,7 @@ class Call:
         self.done = True
         self.turn_no += 1
         if self.speaking:
-            await self.player.stop()
+            await self._stop_audio()
         if not self._play([{"kind": "prerendered", "id": prompt_id}]):
             self.finished = True
 
@@ -159,5 +191,7 @@ class Call:
                 await engine.turn(self.call_sid, self.phone, self.lang, engine.HANGUP)
             except Exception as e:     # best effort: ai/ also times sessions out
                 log.warning("hangup not delivered: %r", e)
+        if self.feeder:
+            self.feeder.cancel()
         if self.player:
             await self.player.close()

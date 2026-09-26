@@ -9,12 +9,15 @@ Reports, per turn, the silence the caller heard: end of their answer -> first re
     python tools/fake_exotel.py                                   # uses tools/fixtures answers
     python tools/fake_exotel.py --answers my.wav --dtmf 1 --max-turns 3
     python tools/fake_exotel.py --dtmf 1 --barge-in               # caller talks over prompts
+    python tools/fake_exotel.py --keys 1,1234,1,3,1,5,1,4,4,1,1,1  # a whole interview on the keypad
+    python tools/fake_exotel.py --script "हाँ जी|1234|सीतापुर|हाँ|…"   # spoken (needs ai/ running)
 """
 
 import argparse
 import asyncio
 import base64
 import json
+import uuid
 import wave
 from itertools import cycle
 from pathlib import Path
@@ -34,11 +37,14 @@ def load_pcm(path):
 
 
 class FakeCall:
-    def __init__(self, ws, answers, dtmf, max_turns, barge_in):
+    def __init__(self, ws, answers, dtmf, max_turns, barge_in, keys=(), phone="+919999999999"):
         self.ws, self.answers, self.dtmf, self.max_turns = ws, answers, dtmf, max_turns
+        self.keys = list(keys)            # per prompt: press these keys instead of speaking
         self.barge_in = barge_in          # answer 0.5 s into each prompt instead of waiting
         self.prompt_started = False
         self.sid = "fake-stream-1"
+        self.call_sid = f"fake-call-{uuid.uuid4().hex[:8]}"   # new call each run, like Exotel
+        self.phone = phone
         self.outgoing: list[bytes] = []   # caller frames waiting to be streamed
         self.answer_ended_at = None
         self.silences = []                # ms of silence heard per turn
@@ -73,7 +79,7 @@ class FakeCall:
                 self.answer_ended_at = None
             if ev == "media" and self.barge_in and not self.prompt_started and self.turns >= 1:
                 self.prompt_started = True
-                loop.call_later(0.5, lambda: self.outgoing.extend(chunks(next(self.answers))))
+                loop.call_later(0.5, lambda: self.outgoing.extend(chunks(next(self.answers, b""))))
                 print("  talking over the prompt")
             elif ev == "clear":
                 print("  adapter stopped its prompt (barge-in)")
@@ -90,26 +96,35 @@ class FakeCall:
                 if self.barge_in and self.turns >= 2:
                     continue                         # already answered over the prompt
                 await asyncio.sleep(0.4)            # a human pauses before answering
-                if self.dtmf and self.turns == 1:
-                    await self.send({"event": "dtmf", "stream_sid": self.sid,
-                                     "dtmf": {"digit": self.dtmf}})
-                    print(f"  pressed {self.dtmf}")
+                if self.keys and self.keys[0] == "~":         # --script: speak this one
+                    self.keys.pop(0)
+                    self.outgoing += chunks(next(self.answers, b""))
+                    print("  answered")
+                elif self.keys or (self.dtmf and self.turns == 1):
+                    press = self.keys.pop(0) if self.keys else self.dtmf
+                    for d in press:
+                        await self.send({"event": "dtmf", "stream_sid": self.sid,
+                                         "dtmf": {"digit": d}})
+                    print(f"  pressed {press}")
                 else:
-                    self.outgoing += [p for p in chunks(next(self.answers))]
+                    answer = next(self.answers, None)
+                    if answer is None:
+                        continue                            # script finished: stay quiet
+                    self.outgoing += chunks(answer)
                     print("  answered")
         print("adapter closed the call")
 
     async def run(self):
         await self.send({"event": "connected", "protocol": "Call", "version": "1.0.0"})
         await self.send({"event": "start", "stream_sid": self.sid, "start": {
-            "stream_sid": self.sid, "call_sid": "fake-call-1", "account_sid": "fake",
-            "from": "+919999999999", "to": "+910000000000",
+            "stream_sid": self.sid, "call_sid": self.call_sid, "account_sid": "fake",
+            "from": self.phone, "to": "+910000000000",
             "media_format": {"encoding": "audio/x-l16", "sample_rate": 8000, "channels": 1}}})
         mic = asyncio.create_task(self.mic())
         try:
             await self.speaker()
             await self.send({"event": "stop", "stream_sid": self.sid,
-                             "stop": {"call_sid": "fake-call-1", "reason": "callended"}})
+                             "stop": {"call_sid": self.call_sid, "reason": "callended"}})
         except websockets.ConnectionClosed:
             pass
         finally:
@@ -121,11 +136,24 @@ def chunks(pcm):
     return [pcm[i:i + FRAME] for i in range(0, len(pcm), FRAME)]
 
 
+def spoken(engine_url, text):
+    import httpx
+    r = httpx.post(f"{engine_url}/v1/tts", json={"text": text, "rate": 8000}, timeout=30)
+    r.raise_for_status()
+    return r.content + b"\x00" * 3200                     # the caller stops talking
+
+
 async def main(a):
     files = a.answers or sorted(FIXTURES.glob("*.wav"))
     answers = cycle([load_pcm(f) for f in files])
+    if a.script:
+        # each item becomes a key press or a spoken answer, in order
+        items = a.script.split("|")
+        a.keys = ",".join(i if set(i) <= set("0123456789*#") else "~" for i in items)
+        answers = iter([spoken(a.engine, i) for i in items if not set(i) <= set("0123456789*#")])
     async with websockets.connect(a.url) as ws:
-        call = FakeCall(ws, answers, a.dtmf, a.max_turns, a.barge_in)
+        call = FakeCall(ws, answers, a.dtmf, a.max_turns, a.barge_in,
+                        a.keys.split(",") if a.keys else (), a.phone)
         await call.run()
     s = sorted(call.silences)
     if s:
@@ -140,4 +168,9 @@ if __name__ == "__main__":
     p.add_argument("--dtmf", help="press this key instead of speaking on the first turn")
     p.add_argument("--max-turns", type=int, default=20)
     p.add_argument("--barge-in", action="store_true", help="interrupt every prompt after the first two")
+    p.add_argument("--phone", default="+919999999999", help="caller number (same number = resume path)")
+    p.add_argument("--keys", help="comma-separated key presses, one group per prompt, e.g. 1,1234,1,3")
+    p.add_argument("--script", help="one reply per prompt, '|'-separated: digits are pressed, "
+                                     "anything else is spoken (voice from the engine's /v1/tts)")
+    p.add_argument("--engine", default="http://localhost:8001", help="for --script voices")
     asyncio.run(main(p.parse_args()))

@@ -90,3 +90,24 @@ to be from one of them.
 CAG found 40% of national certifications in 10 job-roles and 90% of "Green Jobs" in one. Run
 the recommender over a synthetic district cohort and plot the trade distribution. If it
 concentrates like PMKVY did, we have automated the failure with better UX.
+
+## 2026-09-26 — hybrid interview: fixed flow, AI only as the last rung
+
+The question order, consent, eligibility and course codes stay fixed code. An AI model
+may only propose a value from the field's closed list when the word list and number
+patterns find nothing, and the caller still confirms it. Follow-ups and side questions
+are the same kind of proposal, never a change to the flow. Off by default; the flow
+works without it (re-ask, then keypad). Detail: `docs/Prashant/ivr/01-master-plan.md` §3.
+
+## 2026-09-26 — the turn contract gains `timeout`, `hangup` and inline audio
+
+`/v1/turn` utterances: `opened | audio | text | dtmf | timeout | hangup`. Audio travels
+inline as base64 (≤ ~20 s), not by blob reference. `timeout` lets the engine decide the
+nudge; `hangup` marks the session resumable. Resume PIN: `*` means "start new".
+
+## 2026-09-26 — Q0 is district-level until the LGD block list is imported
+
+Spec §9 BLOCKER 3 asks for village/block. We ask the district from a pilot list
+(`ai/data/districts.json`, placeholder choice) and fall back to "other". Block-level
+needs the LGD directory; open.
+

@@ -454,6 +454,7 @@ dev = [
 ]
 prompts = [
     { name = "gtts" },
+    { name = "httpx" },
     { name = "miniaudio" },
 ]
 
@@ -462,6 +463,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "gtts", marker = "extra == 'prompts'" },
     { name = "httpx" },
+    { name = "httpx", marker = "extra == 'prompts'" },
     { name = "miniaudio", marker = "extra == 'prompts'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "python-multipart" },

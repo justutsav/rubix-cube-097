@@ -13,6 +13,7 @@ import httpx
 URL = os.environ.get("ENGINE_URL", "http://localhost:8001")
 TIMEOUT = int(os.environ.get("ENGINE_TIMEOUT_MS", 1500)) / 1000
 PEPPER = os.environ.get("PHONE_PEPPER", "dev-only-pepper").encode()
+TTS_TIMEOUT = int(os.environ.get("TTS_TIMEOUT_MS", 6000)) / 1000
 
 _client = httpx.AsyncClient(base_url=URL, timeout=TIMEOUT)   # one pooled, kept-alive connection
 
@@ -31,6 +32,14 @@ async def turn(call_sid: str, phone: str, lang: str, utterance: dict) -> dict:
     })
     r.raise_for_status()
     return r.json()
+
+
+async def tts(text: str, lang: str) -> bytes:
+    """The personalised tail (the recommendation), synthesised by ai/ at 8 kHz."""
+    r = await _client.post("/v1/tts", json={"text": text, "lang": lang, "rate": 8000},
+                           timeout=TTS_TIMEOUT)
+    r.raise_for_status()
+    return r.content
 
 
 def audio(pcm: bytes) -> dict:

@@ -1,0 +1,14 @@
+{
+  "version": "2026-09-26.1",
+  "note": "Judgement calls, written down (spec §2.4). Change a number = bump the version; every recommendation row records which version produced it.",
+  "skill_transfer": 0.30,
+  "aspiration": 0.30,
+  "local_demand": 0.15,
+  "employment_pref": 0.10,
+  "short_duration": 0.05,
+  "disability_sector": 0.10,
+  "level_fit": 0.05,
+  "near_miss_factor": 0.8,
+  "max_per_sector": 2,
+  "entrepreneurial_words": ["entrepreneur", "self employed", "self-employed", "micro", "small unit", "own business", "grower", "owner", "vendor"]
+}

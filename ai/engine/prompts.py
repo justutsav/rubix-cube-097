@@ -1,0 +1,112 @@
+"""Every fixed thing the engine can say: prompt id -> text, per language.
+
+The engine only ever returns ids (spec §1.1). Channels render the ids once into their
+own format (8 kHz WAV for IVR, …) from GET /v1/prompts/{lang}, so there is exactly one
+copy of the wording, here. Value clips ("सिलाई", "दसवीं") and menus are generated from
+the word list so a new trade is one lexicon entry, not a code change.
+"""
+
+from functools import lru_cache
+
+from .districts import load as districts
+from .extract import lexicon
+
+BASE_HI = {
+    "welcome": "नमस्ते। यह पीएम अजय की ओर से कौशल सहायता सेवा है।",
+    "consent": ("हम आपसे आपके काम और पढ़ाई के बारे में सात सवाल पूछेंगे, ताकि सही कोर्स बता सकें। "
+                "आपकी आवाज़ रिकॉर्ड नहीं रखी जाएगी। जवाब फ़ोन, व्हाट्सऐप या हमारे साथी के ज़रिए आगे बढ़ाए जा सकते हैं। "
+                "क्या आप तैयार हैं? हाँ के लिए एक, नहीं के लिए दो दबाइए, या बोलिए।"),
+    "close_polite": "कोई बात नहीं। जब चाहें दोबारा कॉल करें। नमस्ते।",
+    "pin_set": "अपनी बातचीत बाद में जारी रखने के लिए कोई भी चार अंक का नंबर दबाइए, और उसे याद रखिए।",
+    "pin_saved": "ठीक है, नंबर याद रखिए।",
+    "resume_offer": "पिछली बातचीत जारी रखने के लिए अपने चार अंक दबाइए। नई शुरुआत के लिए स्टार दबाइए।",
+    "pin_wrong": "यह नंबर मेल नहीं खाया।",
+    "resume_ok": "ठीक है, वहीं से आगे बढ़ते हैं।",
+    "new_start": "ठीक है, नई शुरुआत करते हैं।",
+    "q0": "आप किस ज़िले से बोल रहे हैं?",
+    "q1": "आपने कहाँ तक पढ़ाई की है?",
+    "q2": "आपके परिवार का पारंपरिक काम क्या है?",
+    "q2_years": "यह काम आप कितने साल से कर रहे हैं?",
+    "q3": "अभी आप क्या काम करते हैं?",
+    "q4": "आपको कौन सा काम आता है, या आप क्या सीखना चाहते हैं?",
+    "q5": "क्या आने जाने में, या शरीर से, कोई परेशानी है? या घर की कोई ज़िम्मेदारी?",
+    "q5_guardian": "क्या आपके साथ कोई घरवाले हैं जो आपकी ओर से हाँ कह सकें? हाँ के लिए एक, नहीं के लिए दो।",
+    "q6": "आप अपना काम शुरू करना चाहेंगे, या नौकरी करना चाहेंगे?",
+    "q7": "आपके इलाके में किस काम की सबसे ज़्यादा माँग है?",
+    "reask": "माफ़ कीजिए, मैं ठीक से समझ नहीं पाई। एक बार फिर बताइए।",
+    "nudge": "क्या आप मुझे सुन पा रहे हैं?",
+    "you_said": "आपने कहा,",
+    "is_right": "सही है? हाँ के लिए एक, नहीं के लिए दो।",
+    "ack": "ठीक है।",
+    "deferred": "कोई बात नहीं, इसे बाद में देखेंगे।",
+    "readback_intro": "आपके जवाब एक बार सुन लीजिए।",
+    "readback_confirm": "सब सही है तो एक दबाइए। कुछ बदलना है तो दो।",
+    "readback_pick": "कौन सा सवाल बदलना है? उसका नंबर दबाइए, एक से सात।",
+    "label_q1": "पढ़ाई:",
+    "label_q2": "परिवार का काम:",
+    "label_q3": "अभी का काम:",
+    "label_q4": "रुचि:",
+    "label_q5": "परेशानी:",
+    "label_q6": "पसंद:",
+    "label_q7": "इलाके की माँग:",
+    "v-deferred": "बाद में",
+    "recommend_intro": "धन्यवाद। आपके जवाबों के हिसाब से,",
+    "goodbye": "किसी भी सवाल के लिए इसी नंबर पर फिर कॉल करें। नमस्ते।",
+    "hmm": "हम्म।",
+    "sorry": "माफ़ कीजिए, अभी तकनीकी दिक्कत है। हम आपको थोड़ी देर में वापस कॉल करेंगे।",
+    "menu_other": "कुछ और हो तो शून्य दबाइए।",
+    "v-edu-0": "पढ़ाई नहीं की",
+    "v-edu-literate": "पढ़ना लिखना आता है",
+    "v-edu-5": "पाँचवीं तक",
+    "v-edu-8": "आठवीं तक",
+    "v-edu-9": "नौवीं तक",
+    "v-edu-10": "दसवीं पास",
+    "v-edu-11": "ग्यारहवीं तक",
+    "v-edu-12": "बारहवीं पास",
+    "v-edu-iti": "आईटीआई या डिप्लोमा",
+    "v-edu-15": "कॉलेज",
+    "q1_menu": ("पढ़ाई नहीं की तो एक। पाँचवीं तक दो। आठवीं तक तीन। दसवीं चार। "
+                "बारहवीं या आईटीआई पाँच। कॉलेज छह।"),
+    "v-mob-none": "कोई परेशानी नहीं",
+    "v-mob-distance": "दूर जाने में परेशानी",
+    "v-mob-physical": "शरीर से परेशानी",
+    "v-mob-care_duty": "घर की ज़िम्मेदारी",
+    "v-mob-cognitive": "समझने में परेशानी",
+    "q5_menu": "कोई परेशानी नहीं तो एक। दूर जाने में दिक्कत दो। शरीर से दिक्कत तीन। घर की ज़िम्मेदारी चार।",
+    "v-pref-self": "अपना काम",
+    "v-pref-wage": "नौकरी",
+    "v-pref-either": "दोनों में से कुछ भी",
+    "q6_menu": "अपना काम तो एक। नौकरी दो। कुछ भी चलेगा तो तीन।",
+    "q2_years_menu": "एक साल से कम तो एक। एक दो साल तो दो। तीन चार साल तो तीन। पाँच से नौ साल चार। दस साल से ज़्यादा पाँच।",
+    "v-trade-other": "कुछ और",
+}
+
+YEARS_DTMF = {"1": 0, "2": 2, "3": 4, "4": 5, "5": 10}
+_NUM_HI = ["शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ"]
+
+
+def trade_menu_hi() -> str:
+    items = sorted((c for c in lexicon()["trades"] if c.get("dtmf")), key=lambda c: c["dtmf"])
+    return " ".join(f"{c['hi']} के लिए {_NUM_HI[c['dtmf']]}।" for c in items) + " " + BASE_HI["menu_other"]
+
+
+def district_menu_hi() -> str:
+    return " ".join(f"{d['hi']} के लिए {_NUM_HI[d['dtmf']]}।" for d in districts()) + " दूसरे ज़िले के लिए नौ।"
+
+
+@lru_cache(maxsize=None)
+def catalogue(lang: str = "hi") -> dict:
+    if lang != "hi":
+        raise KeyError(lang)                 # new language = a BASE_<lang> dict + lexicon labels
+    c = dict(BASE_HI)
+    for t in lexicon()["trades"]:
+        c[f"v-trade-{t['id'].lower()}"] = t["hi"]
+    for d in districts():
+        c[f"v-dist-{d['id'].lower()}"] = d["hi"]
+    c["v-dist-other"] = "दूसरा ज़िला"
+    for y in range(0, 41):
+        c[f"v-years-{y}"] = "एक साल से कम" if y == 0 else f"{y} साल"
+    c["q0_menu"] = district_menu_hi()
+    for q in ("q2", "q3", "q4", "q7"):
+        c[f"{q}_menu"] = trade_menu_hi()
+    return c
