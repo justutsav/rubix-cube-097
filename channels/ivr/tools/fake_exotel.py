@@ -8,6 +8,7 @@ Reports, per turn, the silence the caller heard: end of their answer -> first re
 
     python tools/fake_exotel.py                                   # uses tools/fixtures answers
     python tools/fake_exotel.py --answers my.wav --dtmf 1 --max-turns 3
+    python tools/fake_exotel.py --dtmf 1 --barge-in               # caller talks over prompts
 """
 
 import argparse
@@ -33,8 +34,10 @@ def load_pcm(path):
 
 
 class FakeCall:
-    def __init__(self, ws, answers, dtmf, max_turns):
+    def __init__(self, ws, answers, dtmf, max_turns, barge_in):
         self.ws, self.answers, self.dtmf, self.max_turns = ws, answers, dtmf, max_turns
+        self.barge_in = barge_in          # answer 0.5 s into each prompt instead of waiting
+        self.prompt_started = False
         self.sid = "fake-stream-1"
         self.outgoing: list[bytes] = []   # caller frames waiting to be streamed
         self.answer_ended_at = None
@@ -68,6 +71,13 @@ class FakeCall:
             if ev == "media" and self.answer_ended_at is not None:
                 self.silences.append((loop.time() - self.answer_ended_at) * 1000)
                 self.answer_ended_at = None
+            if ev == "media" and self.barge_in and not self.prompt_started and self.turns >= 1:
+                self.prompt_started = True
+                loop.call_later(0.5, lambda: self.outgoing.extend(chunks(next(self.answers))))
+                print("  talking over the prompt")
+            elif ev == "clear":
+                print("  adapter stopped its prompt (barge-in)")
+                self.prompt_started = False          # the reply to our answer is a new prompt
             elif ev == "mark":
                 await asyncio.sleep(0.1)            # adapter sends ~100 ms ahead of playback
                 await self.send({"event": "mark", "stream_sid": self.sid, "mark": msg["mark"]})
@@ -76,6 +86,9 @@ class FakeCall:
                 if self.turns > self.max_turns:
                     print("max turns reached, hanging up")
                     return
+                self.prompt_started = False
+                if self.barge_in and self.turns >= 2:
+                    continue                         # already answered over the prompt
                 await asyncio.sleep(0.4)            # a human pauses before answering
                 if self.dtmf and self.turns == 1:
                     await self.send({"event": "dtmf", "stream_sid": self.sid,
@@ -112,7 +125,7 @@ async def main(a):
     files = a.answers or sorted(FIXTURES.glob("*.wav"))
     answers = cycle([load_pcm(f) for f in files])
     async with websockets.connect(a.url) as ws:
-        call = FakeCall(ws, answers, a.dtmf, a.max_turns)
+        call = FakeCall(ws, answers, a.dtmf, a.max_turns, a.barge_in)
         await call.run()
     s = sorted(call.silences)
     if s:
@@ -126,4 +139,5 @@ if __name__ == "__main__":
     p.add_argument("--answers", nargs="*", type=Path)
     p.add_argument("--dtmf", help="press this key instead of speaking on the first turn")
     p.add_argument("--max-turns", type=int, default=20)
+    p.add_argument("--barge-in", action="store_true", help="interrupt every prompt after the first two")
     asyncio.run(main(p.parse_args()))

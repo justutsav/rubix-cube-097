@@ -3,24 +3,43 @@
 Exotel Voicebot WebSocket ⇄ `ai/` turn API. Transport only: no questions, no business
 logic. Plan and design: `docs/Prashant/ivr/`.
 
+Works the same on Linux, Windows and macOS. Needs only [uv](https://docs.astral.sh/uv/)
+(it fetches Python 3.11 itself). CI runs the tests on all three: `.github/workflows/ivr.yml`.
+
 ## Run a full fake call (no Exotel account, no `ai/` needed)
 
+Three terminals, all inside `channels/ivr`:
+
 ```bash
-uv venv -p 3.11 .venv && uv pip install -p .venv -e ".[dev]"
+uv run uvicorn tools.stub_engine:app --port 8001
 ```
 ```bash
-.venv/bin/uvicorn tools.stub_engine:app --port 8001
+uv run uvicorn ivr.server:app --port 8000
 ```
 ```bash
-.venv/bin/uvicorn ivr.server:app --port 8000
-```
-```bash
-.venv/bin/python tools/fake_exotel.py --dtmf 1
+uv run --extra dev python tools/fake_exotel.py --dtmf 1
 ```
 
-Tests: `.venv/bin/pytest -q`
+Add `--barge-in` to the last one to have the caller talk over every prompt.
 
-Config: see `.env.example` (read from the environment).
+## Tests
 
-`prompts/hi/*.wav` are **placeholders** from the macOS Lekha voice
-(`tools/make_placeholder_prompts.py`). Replace with native-speaker recordings.
+```bash
+uv run --extra dev pytest -q
+```
+
+## Settings
+
+Read from the environment; defaults in `.env.example`. None are needed for the fake call.
+`EXOTEL_*` and `MISSED_CALL_SECRET` are only needed for a real phone number.
+
+## Prompts
+
+`prompts/hi/*.wav` are **placeholders** (Google Translate voice via gTTS, no account).
+Regenerate after editing the text in `tools/make_prompts.py`:
+
+```bash
+uv run --extra prompts python tools/make_prompts.py
+```
+
+Replace with native-speaker recordings before any real user hears them.

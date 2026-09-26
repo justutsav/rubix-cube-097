@@ -60,7 +60,11 @@ past ~300 lines.
 | `numpy` | PCM math (energy, frame slicing) |
 | `pytest`, `pytest-asyncio` | Tests |
 
-Python 3.11+. Nothing else. Resampling is **not** here — `ai/` owns it with speech-to-text.
+Also `python-multipart` (Exotel's webhook may POST a form). Prompt generation only:
+`gtts` + `miniaudio` (optional extra).
+
+Python 3.11+, run through `uv`, identical on Linux, Windows and macOS. No OS-specific
+tools anywhere. Resampling is **not** here — `ai/` owns it with speech-to-text.
 
 ---
 
@@ -110,6 +114,9 @@ As in spec §1.1, with one proposed change to agree with the AI/ML owner:
   blob store. Move to `ref` only if the payload becomes a problem.
 - Adapter sends `identity.value = HMAC-SHA256(phone_e164, PHONE_PEPPER)`. Raw number
   never leaves the adapter.
+- **Two extra utterance kinds**, also to agree: `{"kind":"timeout"}` when the caller says
+  nothing for `NO_INPUT_TIMEOUT_MS` (the engine picks the nudge or ends the call), and
+  `{"kind":"hangup"}` when the call drops before the engine ended it.
 
 Response fields the adapter uses: `say[]` (prompt ids / tts text), `expect` (enum options,
 `dtmf_map`, `timeout_ms`), `terminal`, `state` (for logs only).

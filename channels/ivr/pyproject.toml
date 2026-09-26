@@ -7,11 +7,13 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "httpx",
+    "python-multipart",
     "webrtcvad-wheels",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "websockets"]
+prompts = ["gtts", "miniaudio"]
 
 [build-system]
 requires = ["setuptools>=68"]

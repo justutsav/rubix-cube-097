@@ -30,6 +30,7 @@ class Endpointer:
         self.pre = []              # frames just before the start, kept so the first syllable is not clipped
         self.speaking = False
         self.silent_run = 0
+        self.voiced = 0            # speech frames in the current utterance
 
     def feed(self, frame: bytes) -> bytes | None:
         if len(frame) != FRAME_BYTES:
@@ -41,9 +42,11 @@ class Endpointer:
             self.recent = (self.recent + [is_speech])[-5:]
             if sum(self.recent) >= 3:
                 self.speaking, self.buf, self.silent_run = True, list(self.pre), 0
+                self.voiced = sum(self.recent)
             return None
 
         self.buf.append(frame)
+        self.voiced += is_speech
         self.silent_run = 0 if is_speech else self.silent_run + 1
         if self.silent_run >= self.silence_frames or len(self.buf) >= self.max_frames:
             voiced = len(self.buf) - self.silent_run
@@ -55,3 +58,7 @@ class Endpointer:
     @property
     def in_speech(self) -> bool:
         return self.speaking
+
+    @property
+    def speech_ms(self) -> int:
+        return self.voiced * 20 if self.speaking else 0

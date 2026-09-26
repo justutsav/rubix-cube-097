@@ -35,6 +35,20 @@ class Player:
     def play(self, pcm: bytes, mark: str | None = None):
         self._q.put_nowait((pcm, mark))
 
+    async def stop(self):
+        """Barge-in: drop everything queued, stop the clip mid-frame, tell Exotel to flush."""
+        while not self._q.empty():
+            self._q.get_nowait()
+            self._q.task_done()
+        self._task.cancel()
+        try:
+            await self._task
+        except asyncio.CancelledError:
+            pass
+        self._clock = 0.0
+        self._task = asyncio.create_task(self._run())
+        await self._send(exotel.clear(self._sid))
+
     async def close(self):
         self._task.cancel()
         try:

@@ -1,14 +1,21 @@
-"""Generate PLACEHOLDER Hindi prompts with the macOS `say` voice (Lekha).
+"""Generate PLACEHOLDER Hindi prompts and fake caller answers. Works on Linux, Windows, macOS.
+
+Uses gTTS (Google Translate's public voice: no account, needs internet once) and
+miniaudio (decodes the MP3 and resamples to 8 kHz, no ffmpeg). The output WAVs are
+committed, so only run this when a prompt's text changes.
 
 These exist only so the call loop can be built and heard before the real,
 native-speaker prompts are recorded (master plan §5). Replace, never ship.
-Also writes two fake caller answers into tools/fixtures/ for fake_exotel.py.
 
-    python tools/make_placeholder_prompts.py        # macOS only
+    uv run --extra prompts python tools/make_prompts.py
 """
 
-import subprocess
+import io
+import wave
 from pathlib import Path
+
+import miniaudio
+from gtts import gTTS
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -24,8 +31,10 @@ PROMPTS = {
     "q7":       "आपके इलाके में किस काम की ज़्यादा माँग है?",
     "ack":      "ठीक है।",
     "hmm":      "हम्म।",
+    "nudge":    "क्या आप मुझे सुन पा रहे हैं?",
     "result":   "धन्यवाद। आपके लिए सही कोर्स की जानकारी जल्द मिलेगी।",
     "goodbye":  "बात करने के लिए धन्यवाद। नमस्ते।",
+    "sorry":    "माफ़ कीजिए, अभी तकनीकी दिक्कत है। हम आपको थोड़ी देर में वापस कॉल करेंगे।",
 }
 
 ANSWERS = {
@@ -34,10 +43,27 @@ ANSWERS = {
 }
 
 
+def trim(samples, threshold=300, margin=400):
+    """Cut leading/trailing silence (keep 50 ms). Leading silence is dead air the caller
+    hears as lag; trailing silence delays the moment we start listening."""
+    loud = [i for i, v in enumerate(samples) if abs(v) > threshold]
+    if not loud:
+        return samples
+    return samples[max(0, loud[0] - margin):loud[-1] + margin]
+
+
 def render(text, out):
+    mp3 = io.BytesIO()
+    gTTS(text, lang="hi").write_to_fp(mp3)
+    samples = miniaudio.decode(mp3.getvalue(), output_format=miniaudio.SampleFormat.SIGNED16,
+                               nchannels=1, sample_rate=8000).samples
+    pcm = trim(samples).tobytes()
     out.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["say", "-v", "Lekha", "-o", str(out),
-                    "--file-format=WAVE", "--data-format=LEI16@8000", text], check=True)
+    with wave.open(str(out), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(pcm)
 
 
 if __name__ == "__main__":

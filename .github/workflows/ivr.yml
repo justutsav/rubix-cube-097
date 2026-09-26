@@ -1,0 +1,22 @@
+name: ivr
+
+on:
+  push:
+    paths: ["channels/ivr/**", ".github/workflows/ivr.yml"]
+  pull_request:
+    paths: ["channels/ivr/**", ".github/workflows/ivr.yml"]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: channels/ivr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python 3.11 --extra dev pytest -q

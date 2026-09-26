@@ -43,3 +43,4 @@ def dtmf(digit: str) -> dict:
 
 OPENED = {"kind": "opened"}
 HANGUP = {"kind": "hangup"}
+TIMEOUT = {"kind": "timeout"}     # caller said nothing for NO_INPUT_TIMEOUT_MS; ai/ picks the nudge

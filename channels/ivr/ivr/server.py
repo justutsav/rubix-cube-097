@@ -3,12 +3,15 @@
 Run:  uvicorn ivr.server:app --port 8000
 """
 
+import hmac
 import json
 import logging
+import os
+import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 
-from . import exotel, prompts
+from . import engine, exotel, prompts
 from .call import Call
 
 log = logging.getLogger("ivr")
@@ -22,6 +25,36 @@ log.info("loaded %d prompts", len(BANK))
 @app.get("/health")
 def health():
     return {"ok": True, "prompts": len(BANK)}
+
+
+# ponytail: in-memory dedupe, per process. Move to the DB if we run more than one box.
+_recent_missed: dict[str, float] = {}
+DEDUPE_SECONDS = 60
+
+
+@app.api_route("/missed-call", methods=["GET", "POST"])
+async def missed_call(request: Request, background: BackgroundTasks):
+    """Exotel Passthru applet on the incoming flow. Answer at once; ring back in the background."""
+    secret = os.environ.get("MISSED_CALL_SECRET", "")
+    if not secret or not hmac.compare_digest(request.query_params.get("key", ""), secret):
+        raise HTTPException(403)
+    params = dict(request.query_params)
+    if request.method == "POST":
+        params.update(await request.form())
+    caller = params.get("CallFrom") or params.get("From") or ""
+    if not caller:
+        raise HTTPException(400, "no caller number")
+
+    h, now = engine.phone_hash(caller), time.monotonic()
+    for k in [k for k, t in _recent_missed.items() if now - t > DEDUPE_SECONDS]:
+        del _recent_missed[k]
+    if h in _recent_missed:
+        log.info("missed call deduped")
+        return {"ok": True, "callback": "deduped"}
+    _recent_missed[h] = now
+    background.add_task(exotel.place_call, caller)
+    log.info("missed call: callback queued")
+    return {"ok": True, "callback": "queued"}
 
 
 @app.websocket("/stream")
