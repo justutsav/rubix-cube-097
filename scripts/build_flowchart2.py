@@ -320,11 +320,12 @@ b2 = s.fitbox("b2", MX + half + GAP, y, half, TEA, sTEA, size=13, pad=14, sw=3,
 b2h = b2["height"]
 y += max(b1["height"], b2h)
 
-# The arrow that was missing in v1: the database feeds the officer, across the divider.
-s.elbow("to_officer", MX + half + GAP + half, s.byid("b2")["y"] + b2h / 2,
-        [[0, 0], [OX - (MX + half + GAP + half) - 10, 0]], sTEA, sw=3)
-s.text("to_officer_l", MX + MW + 96, s.byid("b2")["y"] + b2h / 2 - 30,
-       "district\naggregation", 14, "#0e7490")
+# The arrow that was missing in v1 — and which v2 initially drew into empty space, because the
+# officer column is far shorter than the beneficiary column and B2 sits well below the console it
+# feeds. It now runs up the gutter between the two columns and lands on the console's left edge.
+# Deferred: the console's position is not known until the officer column has been laid out.
+B2_RIGHT = MX + half + GAP + half
+B2_MID = s.byid("b2")["y"] + b2h / 2
 y += 40
 
 # ---------------------------------------------------------------------------- 10 cross-cutting
@@ -453,6 +454,16 @@ spread = s.fitbox("o_spread", OX, oy, OW, RED, sRED, size=13, pad=14,
                         "better UX. So the ranker carries a spread\npenalty and the console plots the\n"
                         "distribution against that line.")
 oy += spread["height"]
+
+# Now that the console has a position, connect the database to it. Up the gutter, across the
+# divider, into the console's left edge — the one and only link between the two halves.
+con = s.byid("o_console")
+con_mid = con["y"] + con["height"] / 2
+s.elbow("to_officer", B2_RIGHT, B2_MID,
+        [[0, 0], [34, 0], [34, con_mid - B2_MID], [OX - B2_RIGHT - 6, con_mid - B2_MID]],
+        sTEA, sw=3)
+s.text("to_officer_l", B2_RIGHT + 44, (B2_MID + con_mid) / 2 - 20,
+       "district\naggregation\nfeeds the\nconsole", 13, "#0e7490")
 
 # Divider, tall enough for both columns.
 s.vline("div", DIV, -60, max(main_bottom, oy) + 40)
