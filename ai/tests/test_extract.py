@@ -71,9 +71,3 @@ def test_several_trades_and_nbest():
 def test_repeat_requests_but_not_answers():
     assert x.wants_repeat(["एक बार वापस से बोलना।"]) and x.wants_repeat(["फिर से बोलिए"])
     assert not x.wants_repeat(["सिलाई का काम"]) and not x.wants_repeat(["हाँ जी"])
-
-
-def test_spoken_digits():
-    assert x.spoken_digits(["एक दो तीन चार।"]) == "1234"
-    assert x.spoken_digits(["मेरा पिन 4 3 2 1 है"]) == "4321"
-    assert x.spoken_digits(["हाँ"]) == ""

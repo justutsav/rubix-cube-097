@@ -9,21 +9,19 @@ hang-up) and gets back which pre-recorded prompts to play next. The engine walks
 fixed question flow, turns messy answers into one value from a closed list, confirms
 each spoken answer with the caller, saves it against the person (not the call), checks
 NSQF eligibility with hard rules, and ranks real courses from the official register. It
-never invents a course code and never stores audio, transcripts, raw phone numbers or PINs.
+never invents a course code and never stores audio, transcripts, or raw phone numbers.
 
 ## 2. The call, step by step
 
 ```
 opened ─▶ [LANG menu, only if ENGINE_LANGS has >1: 1 हिंदी · 2 भोजपुरी]
    ▼
-known phone with saved progress? ── yes ─▶ RESUME: enter 4-digit PIN (* = new start)
-   │                                                     right PIN ─▶ back at the first unanswered question
-   │                                                     wrong twice ─▶ new person on the same phone
+same phone, unfinished interview? ── yes ─▶ RESUME: "continue the previous conversation?"
+   │                                          1 / हाँ ─▶ back at the first unanswered question
+   │                                          2 / नहीं (or unclear twice) ─▶ new person on the same phone
    no
    ▼
 CONSENT (yes / no)  ── no ─▶ polite goodbye, nothing saved
-   ▼
-PIN_SET (4 keys or spoken "एक दो तीन चार", so the call can resume later; skipped after 2 failures)
    ▼
 q0 district ─▶ q1 education ─▶ q2 family trade ─▶ q2_years ─▶ q3 current work
    ─▶ q4 interests ─▶ q5 constraints ─▶ q6 own work or job ─▶ q7 local demand
@@ -136,7 +134,7 @@ worst line condition: Sarvam 89% understood vs Vosk 68%.
 |---|---|
 | Keypad-only interview (no speech-to-text) | 16 turns, completes, recommendation saved |
 | Fully spoken interview (Vosk offline, placeholder voice) | every answer understood first time; engine 150–300 ms per turn including speech-to-text |
-| Redial on the same phone | PIN → straight to read-back → result |
+| Redial on the same phone | "continue?" → yes → straight to read-back → result |
 | Spoken result | split into sentences, fetched in parallel, engine reply 48 ms |
 | Tests | 50 engine + 29 IVR, on Linux, Windows, macOS (CI) |
 

@@ -188,21 +188,6 @@ def yes_no(nbest):
     return ranked[0][1], ranked[0][0], "LEXICON"
 
 
-_DIGIT_WORDS = {"शून्य": "0", "जीरो": "0", "एक": "1", "दो": "2", "तीन": "3", "चार": "4", "पांच": "5",
-                "पाँच": "5", "छह": "6", "छः": "6", "सात": "7", "आठ": "8", "नौ": "9"}
-
-
-def spoken_digits(nbest) -> str:
-    """'एक दो तीन चार' / '1 2 3 4' / '1234' -> '1234'. Other words ignored."""
-    out = []
-    for w in norm(nbest[0]).split():
-        if w.isdigit():
-            out.append(w)
-        elif w in {norm(k): v for k, v in _DIGIT_WORDS.items()}:
-            out.append({norm(k): v for k, v in _DIGIT_WORDS.items()}[w])
-    return "".join(out)
-
-
 def wants_repeat(nbest) -> bool:
     """'फिर से बोलिए', 'समझ नहीं आया' … Only close matches: this skips an answer, so no guessing."""
     ranked = best_over(tables()["repeat"], nbest[:1])

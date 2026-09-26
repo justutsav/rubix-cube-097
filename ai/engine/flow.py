@@ -1,7 +1,7 @@
 """The interview: a fixed state machine (spec §2.2). Not an agent (decisions.md).
 
-  NEW ─▶ RESUME (PIN) ─┐
-   └──▶ CONSENT ─▶ PIN_SET ─▶ q0 district ─▶ q1 … q7 ─▶ READBACK ─▶ RECOMMEND ─▶ DONE
+  NEW ─▶ RESUME ("continue the previous conversation?" — same phone, unfinished) ─┐
+   └──▶ CONSENT ─▶ q0 district ─▶ q1 … q7 ─▶ READBACK ─▶ RECOMMEND ─▶ DONE
                                (q2 ─▶ q2_years;  q5 cognitive ─▶ GUARDIAN)
 
 Every field runs the same sub-machine:
@@ -134,7 +134,7 @@ class Flow:
         self.state = {"at": at, **kw, "lang": self.state.get("lang", "hi")}   # language survives every step
         self.s["state"] = self.state
 
-    # NEW / RESUME / CONSENT / PIN -------------------------------------------------
+    # NEW / RESUME / CONSENT ------------------------------------------------------
     def _new(self, inp):
         if len(LANGS) > 1:
             self._go("LANG", tries=0)
@@ -155,9 +155,11 @@ class Flow:
     def _begin(self):
         prev = self.st.resumable(self.s["phone_hash"])
         if prev and self.st.answers(prev["id"]):
-            self._go("RESUME", target=prev["id"], pin="", fails=0, silence=0)
+            # same phone, unfinished interview: ask, don't assume (it may be someone else on it)
+            self._go("RESUME", target=prev["id"], tries=0)
             self.say = ["resume_offer"]
-            self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
+            self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF,
+                           "timeout_ms": TIMEOUT_MS}
         else:
             self._start_new(["welcome", "consent"])
 
@@ -168,41 +170,26 @@ class Flow:
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _resume(self, inp):
-        st = self.state
-        if inp.kind == "dtmf":
-            if "*" in inp.digits:
-                return self._start_new(["new_start", "consent"])
-            st["pin"] += "".join(ch for ch in inp.digits if ch.isdigit())
-            if len(st["pin"]) < 4:
-                self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
-                return
-            target = self.st.beneficiary(st["target"])
-            if self.st.pin_hash(target["id"], st["pin"][:4]) == target["pin_hash"]:
-                self.s["beneficiary_id"] = target["id"]
-                self.say = ["resume_ok"]
-                self.resumed_from = self._next_field(None) or "READBACK"
-                return self._advance(None)
-            st["fails"] += 1
-            st["pin"] = ""
-            if st["fails"] >= 2:
-                return self._start_new(["new_start", "consent"])   # never a lockout: welfare line
-            self.say = ["pin_wrong", "resume_offer"]
-        else:                                                  # speech or silence: we need keys
-            st["silence"] += 1
-            if st["silence"] >= MAX_SILENCE:
-                return self._start_new(["new_start", "consent"])
-            self.say = ["nudge", "resume_offer"]
-        self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
+        """'Continue the previous conversation?' 1/yes = continue, 2/no = start fresh."""
+        ans = self._yes_no(inp)
+        if ans == "yes":
+            self.s["beneficiary_id"] = self.state["target"]
+            self.say = ["resume_ok"]
+            self.resumed_from = self._next_field(None) or "READBACK"
+            return self._advance(None)
+        if ans == "no" or self.state["tries"] >= 1:           # unclear twice: fresh start, never stuck
+            return self._start_new(["new_start", "consent"])
+        self.state["tries"] += 1
+        self.say = ["nudge" if inp.kind == "timeout" else "reask", "resume_offer"]
+        self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _consent(self, inp):
         ans = self._yes_no(inp)
         if ans == "yes":
             self.st.set_beneficiary(self.bid, consent_state="GIVEN")
             self.st.consent(self.bid, "DTMF_YES" if inp.kind == "dtmf" else "SPOKEN_YES", self.channel)
-            self._go("PIN_SET", pin="", tries=0)
-            self.say = ["pin_set"]
-            self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
-            return
+            self.say = ["ack"]
+            return self._advance(None)
         if ans == "no":
             return self._close("close_polite")
         self.state["tries"] += 1
@@ -210,28 +197,6 @@ class Flow:
             return self._close("close_polite")
         self.say = (["nudge"] if inp.kind == "timeout" else ["reask"]) + ["consent"]
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
-
-    def _pin_set(self, inp):
-        st = self.state
-        if inp.kind == "dtmf":
-            st["pin"] += "".join(ch for ch in inp.digits if ch.isdigit())
-            if len(st["pin"]) >= 4:
-                self.st.set_beneficiary(self.bid, pin_hash=self.st.pin_hash(self.bid, st["pin"][:4]))
-                self.say = ["pin_saved"]
-                return self._advance(None)
-            self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
-            return
-        spoken = extract.spoken_digits(inp.nbest) if inp.kind in ("audio", "text") and inp.nbest else ""
-        if len(spoken) >= 4:                                   # "एक दो तीन चार" / "1234" works too
-            self.st.set_beneficiary(self.bid, pin_hash=self.st.pin_hash(self.bid, spoken[:4]))
-            self.say = ["pin_saved"]
-            return self._advance(None)
-        st["tries"] += 1
-        if st["tries"] >= 2:                                   # no PIN: interview goes on, just not resumable
-            self.say = ["ack"]
-            return self._advance(None)
-        self.say = ["nudge" if inp.kind == "timeout" else "reask", "pin_set"]
-        self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
 
     # fields -------------------------------------------------------------------------
     def _next_field(self, after):
@@ -455,8 +420,8 @@ class Flow:
         if at == "FIELD":
             self.say.append(st["field"] if st["mode"] == "ask" else
                             f"{st['field']}_menu" if st["mode"] == "menu" else "is_right")
-        elif at in ("CONSENT", "RESUME", "PIN_SET", "LANG", "PICK", "GUARDIAN"):
-            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer", "PIN_SET": "pin_set",
+        elif at in ("CONSENT", "RESUME", "LANG", "PICK", "GUARDIAN"):
+            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer",
                              "LANG": "lang_select", "PICK": "readback_pick",
                              "GUARDIAN": "q5_guardian"}[at])
         elif at == "READBACK":

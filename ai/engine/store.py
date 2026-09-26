@@ -2,11 +2,10 @@
 
 Answers hang off the person (beneficiary), not the call, so a dropped call loses
 nothing. Stored: confirmed/normalised values only. Never stored: audio, transcripts,
-raw phone numbers, raw PINs.
+raw phone numbers.
 """
 
 import datetime as dt
-import hashlib
 import json
 import os
 import sqlite3
@@ -23,7 +22,6 @@ create table if not exists beneficiary (
   ordinal integer not null,
   district text,
   consent_state text not null default 'NONE',   -- NONE|GIVEN|GUARDIAN_GIVEN|GUARDIAN_PENDING|WITHDRAWN
-  pin_hash text,
   created_at text not null,
   unique (phone_hash, ordinal)
 );
@@ -93,8 +91,8 @@ class Store:
         return bid
 
     def resumable(self, phone_hash):
-        """Latest person on this phone who consented and set a PIN (the PIN gates resume)."""
-        return self.q("""select * from beneficiary where phone_hash=? and pin_hash is not null
+        """Latest person on this phone who consented: the one a redial may continue."""
+        return self.q("""select * from beneficiary where phone_hash=?
                          and consent_state in ('GIVEN','GUARDIAN_GIVEN') order by ordinal desc limit 1""",
                       phone_hash).fetchone()
 
@@ -104,11 +102,6 @@ class Store:
     def set_beneficiary(self, bid, **cols):
         for k, v in cols.items():
             self.q(f"update beneficiary set {k}=? where id=?", v, bid)
-
-    @staticmethod
-    def pin_hash(bid, pin):
-        pepper = os.environ.get("PHONE_PEPPER", "dev-only-pepper")
-        return hashlib.sha256(f"{pepper}:{bid}:{pin}".encode()).hexdigest()
 
     def consent(self, bid, kind, channel, script_version="consent.hi.v1"):
         self.q("insert into consent_event values(?,?,?,?,?,?)",

@@ -19,7 +19,7 @@ import websockets
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools.fake_exotel import FakeCall, spoken      # noqa: E402
 
-SCRIPT = ["हाँ जी", "1234", "1", "आठवीं तक पढ़ी हूँ", "हाँ", "बारह साल से सिलाई का काम करती हूँ", "हाँ",
+SCRIPT = ["हाँ जी", "1", "आठवीं तक पढ़ी हूँ", "हाँ", "बारह साल से सिलाई का काम करती हूँ", "हाँ",
           "3", "सिलाई और ब्यूटी पार्लर सीखना है", "हाँ", "1", "अपना काम करना है", "हाँ", "1", "1"]
 
 

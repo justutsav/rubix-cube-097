@@ -48,7 +48,7 @@ Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 | Name | Default | |
 |---|---|---|
 | `ENGINE_DB` | `ai/.storage/engine.db` | SQLite file (`:memory:` for tests) |
-| `PHONE_PEPPER` | `dev-only-pepper` | secret for PIN hashes; same value as the IVR adapter |
+| `PHONE_PEPPER` | `dev-only-pepper` | secret for phone-number hashes; same value as the IVR adapter |
 | `ASR_PROVIDER` | `none` | `none` = keypad menus only · `vosk` = offline · `sarvam` = cloud, falls back to Vosk then keypad |
 | `ASR_TIMEOUT_MS` | `2000` | Sarvam slower than this → fall back |
 | `SARVAM_API_KEY` | — | put it in `ai/.env` (gitignored); read at start-up |

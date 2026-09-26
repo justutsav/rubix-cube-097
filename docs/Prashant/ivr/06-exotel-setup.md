@@ -60,7 +60,7 @@ Exotel moves `?token=` into the call's custom parameters; the adapter accepts it
    Original content: Call Start → Greeting (for restoring later).
 2. Remove the Greeting (⊖). Drag **Voicebot** (not "Stream": that one is one-way) into Call Start.
 3. Voicebot panel: paste the stream URL. **Record this?** off. **Encrypt DTMF?** off (on would
-   scramble the PIN and menu keys). **Next → drag Hangup** into "Drop applet here". **SAVE**.
+   scramble the menu keys). **Next → drag Hangup** into "Drop applet here". **SAVE**.
 4. From the verified mobile, call `08047289281`. Ear to the phone, not speaker.
 
 ## 4. Test B — Exotel calls you (not done yet; costs credits)

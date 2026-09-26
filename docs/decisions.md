@@ -111,3 +111,12 @@ Spec §9 BLOCKER 3 asks for village/block. We ask the district from a pilot list
 (`ai/data/districts.json`, placeholder choice) and fall back to "other". Block-level
 needs the LGD directory; open.
 
+## 2026-09-26 — resume by phone number, no PIN (reverses spec §1.2's PIN gate)
+
+A redial from the same phone with an unfinished interview is asked "continue the previous
+conversation?" (1/हाँ = continue at the first unanswered question, 2/नहीं = new person on the
+same phone; unclear twice = new). The 4-digit PIN is removed: on real calls callers answered
+"हाँ" to the PIN request and it cost a turn on every call. **Accepted risk:** on a shared
+handset, whoever redials can continue another person's interview and hear its read-back —
+the disclosure spec §1.2 guarded against. Revisit before any pilot with real beneficiaries.
+
