@@ -81,6 +81,7 @@ def _input(u) -> Input:
 
 @app.post("/v1/turn")
 def turn(req: TurnRequest):
+    inp = _input(req.utterance)            # speech-to-text outside the lock: calls must not queue on it
     with STORE.lock:
         s = STORE.session(req.channel_ref)
         if s is None:
@@ -91,7 +92,7 @@ def turn(req: TurnRequest):
                 STORE.save_session(s)
             return {"session_id": s["id"], "state": "HANGUP", "say": [], "expect": {"kind": "none"},
                     "terminal": True}
-        out = Flow(STORE, s, req.channel).step(_input(req.utterance))
+        out = Flow(STORE, s, req.channel).step(inp)
         STORE.save_session(s)
         log.info("turn session=%s kind=%s -> %s", s["id"][:8], req.utterance.kind, out["state"])
         return out

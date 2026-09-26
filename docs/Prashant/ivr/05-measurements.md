@@ -39,3 +39,36 @@ fix has a regression test in `ai/tests/test_extract.py`.
 
 **Reading it:** at 10 dB noise one word in four is wrong yet three answers in four are
 still understood before read-back; the read-back and keypad fallback catch the rest.
+
+## Load: simultaneous calls on one box
+
+`uv run --extra dev python tools/load_test.py --calls N` · each caller runs a full interview
+(6 spoken answers + keys) from a fresh number · adapter + engine + Vosk on one laptop (Apple
+silicon), engine timeout 1.5 s. "Finished" = reached the result, not ended by "sorry".
+
+### 2026-09-26, speech-to-text moved outside the engine lock
+
+| Simultaneous calls | Finished | Silence after spoken answer p50 | p95 | max |
+|---|---|---|---|---|
+| 1 | 1/1 | 310 ms | 398 ms | 398 ms |
+| 10 | 10/10 | 388 ms | 644 ms | 724 ms |
+| 25 | 25/25 | 538 ms | 843 ms | 859 ms |
+| 35 | 5/35 | — | — | — |
+| 50 | 2/50 | — | — | — |
+
+Before the lock fix, 10 calls: p50 285 ms, p95 865 ms (speech-to-text for all calls queued on
+one lock). **Ceiling: ~25 simultaneous calls per box with on-box Vosk**; past that the CPU
+cannot transcribe fast enough and turns hit the 1.5 s engine timeout (callers hear the
+apology, progress is saved). Cloud speech-to-text moves that load off the box.
+
+## Latency by turn type (adapter metrics, all load-test calls above)
+
+`uv run python tools/latency.py adapter.log` · perceived silence = 240 ms end-of-speech wait + engine time.
+
+| Turn kind | Turns | Engine p50 | Engine p95 | Perceived silence p50 | p95 | max |
+|---|---|---|---|---|---|---|
+| audio | 506 | 455 ms | 1216 ms | 695 ms | 1456 ms | 1832 ms |
+| dtmf | 1016 | 26 ms | 80 ms | 26 ms | 80 ms | 123 ms |
+| opened | 170 | 28 ms | 51 ms | 28 ms | 51 ms | 67 ms |
+
+Calls: 1 · turns: 1822 · 'hmm' filler played: 337 · barge-ins: 0 · engine failures: 130

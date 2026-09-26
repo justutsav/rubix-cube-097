@@ -37,7 +37,7 @@ def load_pcm(path):
 
 
 class FakeCall:
-    def __init__(self, ws, answers, dtmf, max_turns, barge_in, keys=(), phone="+919999999999"):
+    def __init__(self, ws, answers, dtmf, max_turns, barge_in, keys=(), phone="+919999999999", quiet=False):
         self.ws, self.answers, self.dtmf, self.max_turns = ws, answers, dtmf, max_turns
         self.keys = list(keys)            # per prompt: press these keys instead of speaking
         self.barge_in = barge_in          # answer 0.5 s into each prompt instead of waiting
@@ -49,6 +49,12 @@ class FakeCall:
         self.answer_ended_at = None
         self.silences = []                # ms of silence heard per turn
         self.turns = 0
+        self.quiet = quiet
+        self.closed_by_adapter = False
+
+    def note(self, msg):
+        if not self.quiet:
+            print(msg)
 
     async def send(self, msg):
         await self.ws.send(json.dumps(msg))
@@ -80,17 +86,17 @@ class FakeCall:
             if ev == "media" and self.barge_in and not self.prompt_started and self.turns >= 1:
                 self.prompt_started = True
                 loop.call_later(0.5, lambda: self.outgoing.extend(chunks(next(self.answers, b""))))
-                print("  talking over the prompt")
+                self.note("  talking over the prompt")
             elif ev == "clear":
-                print("  adapter stopped its prompt (barge-in)")
+                self.note("  adapter stopped its prompt (barge-in)")
                 self.prompt_started = False          # the reply to our answer is a new prompt
             elif ev == "mark":
                 await asyncio.sleep(0.1)            # adapter sends ~100 ms ahead of playback
                 await self.send({"event": "mark", "stream_sid": self.sid, "mark": msg["mark"]})
-                print(f"heard prompt set, mark={msg['mark']['name']}")
+                self.note(f"heard prompt set, mark={msg['mark']['name']}")
                 self.turns += 1
                 if self.turns > self.max_turns:
-                    print("max turns reached, hanging up")
+                    self.note("max turns reached, hanging up")
                     return
                 self.prompt_started = False
                 if self.barge_in and self.turns >= 2:
@@ -99,20 +105,21 @@ class FakeCall:
                 if self.keys and self.keys[0] == "~":         # --script: speak this one
                     self.keys.pop(0)
                     self.outgoing += chunks(next(self.answers, b""))
-                    print("  answered")
+                    self.note("  answered")
                 elif self.keys or (self.dtmf and self.turns == 1):
                     press = self.keys.pop(0) if self.keys else self.dtmf
                     for d in press:
                         await self.send({"event": "dtmf", "stream_sid": self.sid,
                                          "dtmf": {"digit": d}})
-                    print(f"  pressed {press}")
+                    self.note(f"  pressed {press}")
                 else:
                     answer = next(self.answers, None)
                     if answer is None:
                         continue                            # script finished: stay quiet
                     self.outgoing += chunks(answer)
-                    print("  answered")
-        print("adapter closed the call")
+                    self.note("  answered")
+        self.closed_by_adapter = True
+        self.note("adapter closed the call")
 
     async def run(self):
         await self.send({"event": "connected", "protocol": "Call", "version": "1.0.0"})
@@ -140,7 +147,7 @@ def spoken(engine_url, text):
     import httpx
     r = httpx.post(f"{engine_url}/v1/tts", json={"text": text, "rate": 8000}, timeout=30)
     r.raise_for_status()
-    return r.content + b"\x00" * 3200                     # the caller stops talking
+    return r.content                                       # the mic streams silence after it
 
 
 async def main(a):
