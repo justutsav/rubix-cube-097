@@ -152,14 +152,24 @@ export async function syncOutbox(): Promise<SyncReport> {
 
   for (const row of batch) {
     try {
-      const { error } = await supabase.functions.invoke('turn', {
+      const { data, error } = await supabase.functions.invoke('turn', {
         body: { mode: 'apply', events: row.payload as DomainEvent[] },
       });
       if (error) throw new Error(error.message);
+      // A 207 means some events in the batch were rejected. Surface it rather than treating a
+      // partial write as a clean one.
+      const applied = data as { applied?: number; errors?: string[] } | null;
+      if (applied?.errors?.length) {
+        console.error(`[sync] batch ${row.id} partially applied:`, applied.errors.join(' | '));
+        throw new Error(applied.errors[0]);
+      }
       await store.outboxDelete(row.id);
       report.pushed++;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      // Log it. Storing the error on the outbox row alone made a failing sync look identical to
+      // an idle one — the batches simply never left and nothing said why.
+      console.error(`[sync] batch ${row.id} failed (attempt ${row.attempts + 1}):`, msg);
       await store.outboxFail(row.id, msg);
       report.failed++;
       if (!report.errors.includes(msg)) report.errors.push(msg);

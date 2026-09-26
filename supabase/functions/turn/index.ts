@@ -37,6 +37,22 @@ type Body =
   | { mode: 'apply'; events: DomainEvent[] }
   | ({ mode: 'turn' } & TurnRequest & { sessionId?: string });
 
+/**
+ * Make a Supabase error legible.
+ *
+ * Postgres errors arrive as plain objects, not Error instances, so `e.message` is undefined and
+ * template-stringing them yields "[object Object]" — which is what the first sync failure reported,
+ * hiding a foreign-key violation behind a shrug. The code and details are the whole diagnosis.
+ */
+function describeError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object') {
+    const o = e as { message?: string; details?: string; hint?: string; code?: string };
+    return [o.code && `[${o.code}]`, o.message, o.details, o.hint].filter(Boolean).join(' ') || JSON.stringify(e);
+  }
+  return String(e);
+}
+
 async function applyEvents(db: SupabaseClient, events: DomainEvent[]): Promise<{ applied: number; errors: string[] }> {
   const errors: string[] = [];
   let applied = 0;
@@ -46,6 +62,28 @@ async function applyEvents(db: SupabaseClient, events: DomainEvent[]): Promise<{
       switch (ev.type) {
         case 'session.upsert': {
           const s = ev.session;
+
+          // BENEFICIARY FIRST. `session.beneficiary_id` is a foreign key, so inserting the session
+          // before the person it belongs to fails every time — which is exactly what happened: the
+          // app's outbox drained into two FK violations per batch and, because the failures were
+          // only stored on the outbox row and never logged, it looked like nothing was syncing at
+          // all rather than like something was failing.
+          const pinHash = s.resumePin ? await sha256Hex(`rc097:${s.beneficiaryId}:${s.resumePin}`) : null;
+          const { error: bErr } = await db.from('beneficiary').upsert(
+            {
+              id: s.beneficiaryId,
+              // No phone_hash on this path. A kiosk or doorstep beneficiary has no phone, and
+              // synthesising one from a device id would fabricate an identity that can never match
+              // a real call. The column is nullable for this reason.
+              consent_state: s.consentState,
+              village_name: s.registration.villageName,
+              ...(pinHash ? { resume_pin_hash: `\\x${pinHash}` } : {}),
+              updated_at: s.lastTurnAt,
+            },
+            { onConflict: 'id' },
+          );
+          if (bErr) throw bErr;
+
           const { error } = await db.from('session').upsert(
             {
               id: s.sessionId,
@@ -66,21 +104,6 @@ async function applyEvents(db: SupabaseClient, events: DomainEvent[]): Promise<{
             { onConflict: 'id' },
           );
           if (error) throw error;
-
-          // The PIN is stored as a hash and never in the clear — it is the gate that stops a shared
-          // handset leaking one person's interview to another.
-          const pinHash = s.resumePin ? await sha256Hex(`rc097:${s.beneficiaryId}:${s.resumePin}`) : null;
-          const { error: bErr } = await db.from('beneficiary').upsert(
-            {
-              id: s.beneficiaryId,
-              consent_state: s.consentState,
-              village_name: s.registration.villageName,
-              ...(pinHash ? { resume_pin_hash: `\\x${pinHash}` } : {}),
-              updated_at: s.lastTurnAt,
-            },
-            { onConflict: 'id' },
-          );
-          if (bErr) throw bErr;
           break;
         }
 
@@ -211,7 +234,7 @@ async function applyEvents(db: SupabaseClient, events: DomainEvent[]): Promise<{
       }
       applied++;
     } catch (e) {
-      errors.push(`${ev.type}: ${e instanceof Error ? e.message : String(e)}`);
+      errors.push(`${ev.type}: ${describeError(e)}`);
     }
   }
 
