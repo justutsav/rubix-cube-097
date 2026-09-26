@@ -31,28 +31,26 @@ Mobile ──call──▶ Exotel ExoPhone ──Voicebot applet, wss──▶ C
 | Recording | Trial announces "this call is now being recorded" and keeps recordings (▶ in Inbox) even with "Record this?" off; delete them from the dashboard |
 | Inbox outcome | Shows "Client hung-up before connecting to…" for bot calls: normal, the bot is not a "connect" |
 
-## 2. Start the services
+## 2. Start the services — one command
+
+```bash
+scripts/ivr.sh start      # engine + adapter + tunnel; prints the Exotel Voicebot URL
+scripts/ivr.sh restart    # engine + adapter only: the tunnel and its URL stay
+scripts/ivr.sh status     # what is running, health, calls in progress, URL
+scripts/ivr.sh stop       # everything; the tunnel URL is gone
+```
+
+Add `--debug` to `start`/`restart` to keep caller audio and transcripts in `.run/` (test calls
+only). `restart` and `stop` refuse while a call is in progress (`FORCE=1` overrides). Logs,
+pids, the test database and the last URL live in `.run/` (gitignored).
+
+**The URL:** a free quick tunnel gets a new random address every time the *tunnel* starts.
+`restart` keeps it; only `stop` + `start` changes it (the script prints `NEW URL` then —
+paste it into the Voicebot applet). For an address that never changes: a free ngrok account
+(one fixed domain) or a Cloudflare named tunnel on a domain you own.
 
 Settings live in gitignored files: `ai/.env` (`SARVAM_API_KEY`) and `channels/ivr/.env`
-(`STREAM_TOKEN`, `ENGINE_URL=http://localhost:8011`, later `EXOTEL_*`). Ports 8000/8001 may be
-taken by other projects on this laptop; we use 8765 and 8011.
-
-```bash
-cd ai && ASR_PROVIDER=sarvam TTS_PROVIDER=sarvam uv run --extra tts --extra vosk uvicorn engine.server:app --port 8011
-```
-```bash
-cd channels/ivr && uv run uvicorn ivr.server:app --port 8765
-```
-```bash
-cloudflared tunnel --url http://localhost:8765
-```
-
-Wait ~1 minute after cloudflared prints `https://<words>.trycloudflare.com`, then check
-`https://<words>.trycloudflare.com/health`. Keep the default protocol (QUIC); `--protocol
-http2` gave HTTP 530. The address changes every time cloudflared restarts.
-
-Stream URL for Exotel: `wss://<words>.trycloudflare.com/stream?token=<STREAM_TOKEN>`.
-Exotel moves `?token=` into the call's custom parameters; the adapter accepts it there.
+(`STREAM_TOKEN`, later `EXOTEL_*`). One-time: `cd ai && uv run python tools/get_piper_voice.py`.
 
 ## 3. Test A — call the ExoPhone (done, works)
 

@@ -47,3 +47,6 @@ graphify-out/
 .claude/
 .vercel/
 *.egg-info/
+
+# scripts/ivr.sh: pids, logs, test DB, tunnel URL
+.run/
