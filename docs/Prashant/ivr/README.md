@@ -18,3 +18,4 @@ per `CONTRIBUTING.md`.
 |---|---|---|
 | 2026-09-26 | Planning | Master plan, build doc, testing plan, optimization plan written. Nothing built yet |
 | 2026-09-26 | Build step 1 | `channels/ivr/`: Exotel frame parser (`ivr/exotel.py`), WebSocket server logging every event (`ivr/server.py`), fake Exotel client (`tools/fake_exotel.py`), 2 tests passing. Branch `prashant/ivr-build` |
+| 2026-09-26 | Build step 2 | `ivr/audio.py`: 20 ms framing + `Player` that sends at real-time pace, 100 ms ahead, with end-of-clip marks. Server echoes caller audio (temporary). Fake Exotel now listens and reports pacing: 2 s audio heard over 1.9–2.1 s, max frame gap 22 ms. 5 tests passing |

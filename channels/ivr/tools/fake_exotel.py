@@ -27,9 +27,44 @@ def load_pcm(path):
         return w.readframes(w.getnframes())
 
 
+async def listen(ws, got):
+    """Collect what the adapter plays back: (arrival time, bytes) per media frame."""
+    loop = asyncio.get_running_loop()
+    async for text in ws:
+        msg = json.loads(text)
+        if msg.get("event") == "media":
+            got.append((loop.time(), base64.b64decode(msg["media"]["payload"])))
+        else:
+            print("adapter sent:", msg.get("event"), msg.get("mark", ""))
+
+
+async def wait_quiet(got, idle=0.5, limit=30):
+    """Return once no audio has arrived for `idle` seconds (or `limit` passes)."""
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    while loop.time() - start < limit:
+        last = got[-1][0] if got else start
+        if loop.time() - last > idle and (got or loop.time() - start > 2):
+            return
+        await asyncio.sleep(0.05)
+
+
+def report(got):
+    if not got:
+        print("heard nothing back")
+        return
+    audio_s = sum(len(b) for _, b in got) / 16000
+    span_s = got[-1][0] - got[0][0]
+    gaps = [b[0] - a[0] for a, b in zip(got, got[1:])]
+    print(f"heard {audio_s:.2f}s of audio over {span_s:.2f}s; "
+          f"max gap between frames {max(gaps, default=0) * 1000:.0f} ms")
+
+
 async def call(url, pcm, dtmf, fast):
     sid = "fake-stream-1"
+    got = []
     async with websockets.connect(url) as ws:
+        listener = asyncio.create_task(listen(ws, got))
         send = lambda m: ws.send(json.dumps(m))
         await send({"event": "connected", "protocol": "Call", "version": "1.0.0"})
         await send({"event": "start", "stream_sid": sid, "start": {
@@ -44,8 +79,11 @@ async def call(url, pcm, dtmf, fast):
                 await asyncio.sleep(0.02)
         if dtmf:
             await send({"event": "dtmf", "stream_sid": sid, "dtmf": {"digit": dtmf}})
+        await wait_quiet(got)
         await send({"event": "stop", "stream_sid": sid,
                     "stop": {"call_sid": "fake-call-1", "reason": "callended"}})
+        listener.cancel()
+    report(got)
 
 
 if __name__ == "__main__":

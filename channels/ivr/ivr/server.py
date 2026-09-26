@@ -1,4 +1,6 @@
-"""IVR adapter server. Build step 1: accept Exotel's stream and log every event.
+"""IVR adapter server. Build step 2: log every event and echo the caller's audio back.
+
+The echo is temporary; build step 3 replaces it with the turn loop.
 
 Run:  uvicorn ivr.server:app --port 8000
 """
@@ -9,6 +11,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from . import exotel
+from .audio import Player
 
 log = logging.getLogger("ivr")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -26,6 +29,7 @@ async def stream(ws: WebSocket):
     await ws.accept()
     stream_sid = ""
     media_bytes = 0
+    player = None
     try:
         while True:
             try:
@@ -38,8 +42,11 @@ async def stream(ws: WebSocket):
                 stream_sid = ev.stream_sid
                 # never log the raw number
                 log.info("start stream=%s call=%s", stream_sid, ev.call_sid)
+                player = Player(ws.send_text, stream_sid)
             elif ev.kind == "media":
                 media_bytes += len(ev.pcm)
+                if player:
+                    player.play(ev.pcm)
             elif ev.kind == "dtmf":
                 log.info("dtmf stream=%s digit=%s", stream_sid, ev.digit)
             elif ev.kind == "stop":
@@ -51,3 +58,6 @@ async def stream(ws: WebSocket):
     except WebSocketDisconnect:
         # socket closed without a stop frame: same as a hang-up
         log.info("disconnect stream=%s audio=%.1fs", stream_sid, media_bytes / 16000)
+    finally:
+        if player:
+            await player.close()
