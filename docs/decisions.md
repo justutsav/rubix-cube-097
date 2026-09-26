@@ -111,3 +111,58 @@ Spec §9 BLOCKER 3 asks for village/block. We ask the district from a pilot list
 (`ai/data/districts.json`, placeholder choice) and fall back to "other". Block-level
 needs the LGD directory; open.
 
+## 2026-09-26 — resume by phone number, no PIN (reverses spec §1.2's PIN gate)
+
+A redial from the same phone with an unfinished interview is asked "continue the previous
+conversation?" (1/हाँ = continue at the first unanswered question, 2/नहीं = new person on the
+same phone; unclear twice = new). The 4-digit PIN is removed: on real calls callers answered
+"हाँ" to the PIN request and it cost a turn on every call. **Accepted risk:** on a shared
+handset, whoever redials can continue another person's interview and hear its read-back —
+the disclosure spec §1.2 guarded against. Revisit before any pilot with real beneficiaries.
+
+## 2026-09-26 — the AI helper is on (Sarvam), grounded and capped
+
+Extends the hybrid decision above. When the word list fails, `sarvam-105b-conversations`
+(JSON mode, ~0.5 s) may pick an allowed value (still read back), answer a side question
+**only from `ai/data/facts_hi.md`**, or detect "repeat"/"I want a person". Unguarded, the model
+told a caller the course costs money; with the fact sheet it defers fees and stipend to the
+district worker. Cost cap: 6 AI calls per phone call, none for one-word answers. Prompts are
+recorded once in Sarvam's voice at 1.2×; only the result and AI replies use live voice.
+
+## 2026-09-26 — voice: Piper on the machine, not a paid cloud voice
+
+Sarvam Bulbul cost too much for our free tier. Piper (open source, CPU, offline) makes speech
+~40x faster than real time on a laptop, so prompts and live replies cost nothing and arrive
+sooner. Voice `hi_IN-priyamvada-medium`. Its training data is CC BY-NC-SA 4.0: acceptable for
+the hackathon and a government pilot, **to be confirmed before any paid deployment**. Sarvam
+remains a switch (`TTS_PROVIDER=sarvam`).
+
+## 2026-09-26 — speech policy: the assistant only says what we wrote
+
+Whatever a caller says, the assistant speaks only our own sentences: pre-recorded prompts,
+pre-written answers to side questions (`ai/data/facts_hi.json`, picked by id), the recommendation
+template, and caller-given place/job names after cleaning. The AI never writes spoken words.
+Injection and abuse are filtered before the AI; abuse twice ends the call; per-call, per-number
+and daily caps bound cost. Guardrail events are logged as counts, never words. No promises of
+money or jobs are ever made (fact A12). Details and tests: `docs/Prashant/ivr/07-guardrails.md`.
+
+## 2026-09-27 — conversation: problems are heard, the caller can go back, the engine reasons
+
+PS 26097 asks for an interview that is "empathetic and conversational rather than administrative"
+and for skill gaps, pathways and local opportunities, not just a course list. So: a problem the
+caller shares is acknowledged (our own line per topic), noted as a topic for the district worker
+and remembered for the question it answers; the caller can go back by words or the star key; the
+engine links answers out loud and explains its result with rules (`ai/engine/reasoning.py`), not
+a model, so every sentence traces to an answer. The speech policy is unchanged: the AI only picks
+topic and question ids. Details: `docs/Prashant/engine/01-engine.md` §3 and §5.
+
+## 2026-09-27 — local first: speech, AI helper and voices run on the machine; Bengali and Odia
+
+Speech-to-text (AI4Bharat IndicConformer), the AI helper (a multilingual *matching* model,
+multilingual-e5-small) and the voices (Piper; Meta MMS for Odia) now run on the CPU, offline, at no
+per-call cost. Measured against Sarvam on the same sets: equal or better on clean and phone
+lines, a few points worse in heavy noise and on open job names; 10–100× faster. Sarvam stays a
+one-setting switch. The AI helper keeps the speech policy by construction: a matching model
+cannot write text, it only picks our items. Bengali and Odia added as full catalogues; the
+wording and word lists are drafts until a native speaker checks them. Voice licences (MMS
+CC-BY-NC, Piper Hindi CC BY-NC-SA) must be confirmed before any paid deployment.

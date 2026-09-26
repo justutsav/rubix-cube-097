@@ -2,6 +2,7 @@
 
 import array
 import asyncio
+import json
 import math
 import random
 
@@ -64,13 +65,64 @@ def test_talking_over_a_prompt_stops_it_and_counts_as_the_answer(eng):
     with TestClient(server.app).websocket_connect("/stream") as ws:
         line = Line(ws)
         line.start()
-        line.audio(frames(SPEECH[:4800]))              # caller starts talking over the 2 s q1
+        line.audio(frames(SPEECH[:12800]))              # caller starts talking over the 2 s q1
         heard, _ = line.hear(until="clear")
         assert len(voice(heard)) < len(clip(1, ms=2000))      # q1 was cut short
-        line.audio(frames(SPEECH[4800:]) + [SILENCE] * 20)
+        line.audio(frames(SPEECH[12800:]) + [SILENCE] * 20)
         audio, _ = line.hear()
         assert voice(audio) == clip(2)                        # the interrupting speech was the answer
     assert eng.seen[:2] == ["opened", "audio"]
+
+
+def test_no_barge_in_during_the_first_seconds(eng, monkeypatch):
+    """Exotel's own 'this call is being recorded' must not cut our welcome."""
+    monkeypatch.setenv("BARGE_IN_GRACE_MS", "4000")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        line.audio(frames(SPEECH[:12800]))            # 0.8 s of "speech" right at the start
+        audio, _ = line.hear()                        # prompt plays to its end: no clear
+        assert voice(audio) == clip(1, ms=2000)
+    assert eng.seen == ["opened"] or eng.seen == ["opened", "hangup"]
+
+
+def _scaled(pcm, gain):
+    a = array.array("h", pcm)
+    return array.array("h", [int(v * gain) for v in a]).tobytes()
+
+
+def test_speakerphone_echo_does_not_interrupt_but_the_caller_does(eng, monkeypatch):
+    monkeypatch.setenv("ECHO_LEARN_MS", "300")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        echo = _scaled(SPEECH, 0.2)                      # our prompt coming back, quieter
+        line.audio(frames(echo + echo))                  # ~2.4 s of echo while q1 plays
+        line.audio(frames(SPEECH[:12800]))               # then the caller talks into the phone
+        heard, _ = line.hear(until="clear")              # that interrupts
+        assert len(voice(heard)) < len(clip(1, ms=2000))
+
+
+def test_speakerphone_echo_alone_lets_the_prompt_finish(eng, monkeypatch):
+    monkeypatch.setenv("ECHO_LEARN_MS", "300")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        line.audio(frames(_scaled(SPEECH, 0.2) * 2))
+        audio, _ = line.hear()                          # no clear: the whole q1 is heard
+        assert voice(audio) == clip(1, ms=2000)
+
+
+def test_echo_tail_right_after_a_prompt_is_not_an_answer(eng, monkeypatch):
+    monkeypatch.setenv("POST_PROMPT_GUARD_MS", "300")
+    with TestClient(server.app).websocket_connect("/stream") as ws:
+        line = Line(ws)
+        line.start()
+        _, mark = line.hear()
+        line.played(mark)
+        line.audio(frames(SPEECH[:4000]) + [SILENCE] * 30)   # 250 ms tail of our own voice
+        line.audio([SILENCE] * 5)
+    assert eng.seen[:2] == ["opened", "hangup"] or eng.seen == ["opened"]   # no audio turn sent
 
 
 def test_key_press_during_a_prompt_stops_it(eng):
@@ -227,12 +279,22 @@ def test_place_call_without_settings_does_nothing(monkeypatch):
 
 
 def test_stream_token_required_when_set(eng, monkeypatch):
+    import base64 as b64
     monkeypatch.setenv("STREAM_TOKEN", "t0ken")
     c = TestClient(server.app)
-    with pytest.raises(Exception):
-        with c.websocket_connect("/stream") as ws:            # no token: closed before accept
-            ws.receive_text()
-    with c.websocket_connect("/stream?token=t0ken") as ws:     # right token: normal call
-        Line(ws).start()
-        audio, _ = Line(ws).hear()
-        assert voice(audio) == clip(1, ms=2000)
+
+    def call(path="/stream", headers=None, params=None):
+        with c.websocket_connect(path, headers=headers or {}) as ws:
+            ws.send_text(json.dumps({"event": "connected"}))
+            ws.send_text(json.dumps({"event": "start", "stream_sid": "s1", "start": {
+                "call_sid": "c1", "from": "+911", "custom_parameters": params or {}}}))
+            audio, _ = Line(ws).hear()
+            return voice(audio)
+
+    # each accepted call hears a prompt (the scripted engine moves on across calls)
+    assert call("/stream?token=t0ken")                                       # query (softphone)
+    assert call(headers={"authorization": "Basic " + b64.b64encode(b"x:t0ken").decode()})
+    assert call(params={"token": "t0ken"})                                   # Exotel custom parameter
+    for bad in ({"params": {"token": "nope"}}, {}):                          # wrong / missing
+        with pytest.raises(Exception):
+            call(**bad)

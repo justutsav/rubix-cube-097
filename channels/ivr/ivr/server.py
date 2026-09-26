@@ -3,6 +3,7 @@
 Run:  uvicorn ivr.server:app --port 8000
 """
 
+import base64
 import hmac
 import json
 import logging
@@ -68,19 +69,31 @@ async def missed_call(request: Request, background: BackgroundTasks):
     return {"ok": True, "callback": "queued"}
 
 
-def _stream_allowed(ws: WebSocket) -> bool:
-    """STREAM_TOKEN set -> the connection must carry it as ?token=… (Exotel allows custom query
-    params on the stream URL). Unset = open, for local testing only."""
+def _token_ok(given: str) -> bool:
     token = os.environ.get("STREAM_TOKEN", "")
-    return not token or hmac.compare_digest(ws.query_params.get("token", ""), token)
+    return not token or hmac.compare_digest(given or "", token)
+
+
+def _basic_auth_token(ws: WebSocket) -> str:
+    """wss://user:<token>@host/stream -> Exotel sends it as an Authorization: Basic header."""
+    h = ws.headers.get("authorization", "")
+    if h.lower().startswith("basic "):
+        try:
+            return base64.b64decode(h[6:]).decode().partition(":")[2]
+        except Exception:
+            return ""
+    return ""
 
 
 @app.websocket("/stream")
 async def stream(ws: WebSocket):
-    if not _stream_allowed(ws):
-        await ws.close(code=1008)          # policy violation: wrong or missing token
-        log.warning("stream rejected: bad token")
-        return
+    """STREAM_TOKEN set -> the call must prove it, by any of:
+      ?token=… on the URL (softphone, fake Exotel),
+      Basic auth in the URL (wss://x:<token>@host/stream),
+      a `token` custom parameter, which is how Exotel's Voicebot applet delivers URL query
+      values: it strips them from the URL and puts them in start.custom_parameters.
+    Unset = open, for local testing only."""
+    early = _token_ok(ws.query_params.get("token", "")) or _token_ok(_basic_auth_token(ws))
     await ws.accept()
     call = Call(ws.send_text, BANK)
     media_bytes = 0
@@ -92,10 +105,21 @@ async def stream(ws: WebSocket):
                 log.warning("bad frame dropped: %s", e)
                 continue
 
+            if not early:
+                # not proven at the handshake: the first real event must be a start carrying it
+                if ev.kind == "connected":
+                    continue
+                params = ev.raw.get("start", {}).get("custom_parameters") or {}
+                if ev.kind != "start" or not _token_ok(str(params.get("token", ""))):
+                    log.warning("stream rejected: bad token (custom parameter keys: %s)", sorted(params))
+                    await ws.close(code=1008)
+                    return
+                early = True
             if ev.kind == "media":
                 media_bytes += len(ev.pcm)
             elif ev.kind == "start":
-                log.info("start stream=%s call=%s", ev.stream_sid, ev.call_sid)   # never log the number
+                log.info("start stream=%s call=%s format=%s", ev.stream_sid, ev.call_sid,   # never log the number
+                         ev.raw.get("start", {}).get("media_format"))
             elif ev.kind == "dtmf":
                 log.info("dtmf stream=%s digit=%s", call.stream_sid, ev.digit)
             elif ev.kind == "stop":

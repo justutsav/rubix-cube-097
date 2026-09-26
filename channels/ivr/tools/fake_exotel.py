@@ -9,8 +9,8 @@ Reports, per turn, the silence the caller heard: end of their answer -> first re
     python tools/fake_exotel.py                                   # uses tools/fixtures answers
     python tools/fake_exotel.py --answers my.wav --dtmf 1 --max-turns 3
     python tools/fake_exotel.py --dtmf 1 --barge-in               # caller talks over prompts
-    python tools/fake_exotel.py --keys 1,1234,1,3,1,5,1,4,4,1,1,1  # a whole interview on the keypad
-    python tools/fake_exotel.py --script "हाँ जी|1234|सीतापुर|हाँ|…"   # spoken (needs ai/ running)
+    python tools/fake_exotel.py --keys 1,1,3,1,5,1,4,4,1,1,1  # a whole interview on the keypad
+    python tools/fake_exotel.py --script "हाँ जी|सीतापुर|हाँ|…"   # spoken (needs ai/ running)
 """
 
 import argparse
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     p.add_argument("--max-turns", type=int, default=20)
     p.add_argument("--barge-in", action="store_true", help="interrupt every prompt after the first two")
     p.add_argument("--phone", default="+919999999999", help="caller number (same number = resume path)")
-    p.add_argument("--keys", help="comma-separated key presses, one group per prompt, e.g. 1,1234,1,3")
+    p.add_argument("--keys", help="comma-separated key presses, one group per prompt, e.g. 1,1,3")
     p.add_argument("--script", help="one reply per prompt, '|'-separated: digits are pressed, "
                                      "anything else is spoken (voice from the engine's /v1/tts)")
     p.add_argument("--engine", default="http://localhost:8001", help="for --script voices")

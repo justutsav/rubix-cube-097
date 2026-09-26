@@ -33,6 +33,16 @@ from engine import extract as x
     ("mobility", "नहीं", "none"),                    # bare no to "any difficulty?"
     ("mobility", "ही नहीं जा सकती", "distance"),      # misheard "दूर", still not "none"
     ("trade", "राजगीर का काम", "CONSTRUCTION"),
+    # found on the first real Exotel call: Sarvam ends every transcript with "।"
+    ("district", "गया।", "GAYA"),
+    ("yes_no", "हाँ।", "yes"),
+    ("education", "मैंने बैचलर्स तक पढ़ाई की है।", {"class": 15}),
+    ("years", "5 साल।", 5),
+    ("trade", "खेती।", "FARMING"),
+    ("mobility", "आने जाने में दिक्कत है।", "distance"),
+    ("trade", "मैं कुक बनना चाहूँगा", "COOKING"),
+    ("education", "बस तीसरी चौथी तक", {"class": 0, "literate": True}),   # below 5th: reads/writes
+    ("education", "3 तक पढ़ा", {"class": 0, "literate": True}),
 ])
 def test_extracts(fn, text, want):
     got = getattr(x, fn)([text])
@@ -59,3 +69,14 @@ def test_several_trades_and_nbest():
     # the right answer only in the second guess still wins, a little less sure
     v, conf, _ = x.trade(["कुछ और", "सिलाई"])
     assert v == "TAILORING" and conf < 1.0
+
+
+def test_repeat_requests_but_not_answers():
+    assert x.wants_repeat(["एक बार वापस से बोलना।"]) and x.wants_repeat(["फिर से बोलिए"])
+    assert not x.wants_repeat(["सिलाई का काम"]) and not x.wants_repeat(["हाँ जी"])
+
+
+def test_spoken_menu_keys():
+    assert x.spoken_key(["नौ।"]) == "9" and x.spoken_key(["शून्य"]) == "0" and x.spoken_key(["3"]) == "3"
+    assert x.spoken_key(["नंबर तीन"]) == "3"
+    assert x.spoken_key(["दसवीं तक"]) is None and x.spoken_key(["हाँ"]) is None

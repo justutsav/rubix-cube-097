@@ -85,6 +85,19 @@ class ScriptedEngine:
                 "terminal": i == len(self.script) - 1}
 
 
+@pytest.fixture(autouse=True)
+def _no_local_env(monkeypatch):
+    """Tests must not depend on a developer's channels/ivr/.env (e.g. a live STREAM_TOKEN)."""
+    for k in ("STREAM_TOKEN", "MISSED_CALL_SECRET"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BARGE_IN_GRACE_MS", "0")      # tests interrupt the very first prompt
+    monkeypatch.setenv("BARGE_IN_SPEECH_MS", "400")   # tests check the mechanism, not the tuned value
+    monkeypatch.setenv("ECHO_LEARN_MS", "0")          # speakerphone tests turn echo measuring back on
+    monkeypatch.setenv("POST_PROMPT_GUARD_MS", "0")   # ...and the post-prompt echo guard
+    monkeypatch.setenv("ENDPOINT_SILENCE_MS", "240")  # fixtures end answers with ~0.4 s of silence
+    monkeypatch.setenv("VAD_AGGRESSIVENESS", "2")     # VAD tests pin the level they were written for
+
+
 @pytest.fixture
 def eng(monkeypatch):
     """Scripted engine + small distinct prompts: q1 (long, so it can be interrupted),

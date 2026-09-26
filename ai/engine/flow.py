@@ -1,21 +1,32 @@
 """The interview: a fixed state machine (spec §2.2). Not an agent (decisions.md).
 
-  NEW ─▶ RESUME (PIN) ─┐
-   └──▶ CONSENT ─▶ PIN_SET ─▶ q0 district ─▶ q1 … q7 ─▶ READBACK ─▶ RECOMMEND ─▶ DONE
+  NEW ─▶ RESUME ("continue the previous conversation?" — same phone, unfinished) ─┐
+   └──▶ CONSENT ─▶ q0 district ─▶ q1 … q7 ─▶ READBACK ─▶ RECOMMEND ─▶ DONE
                                (q2 ─▶ q2_years;  q5 cognitive ─▶ GUARDIAN)
 
 Every field runs the same sub-machine:
   ask ──answer──▶ confirm ──yes──▶ next field
    │  no match ×2 ──▶ menu (keypad) ──no match ×2 / silence ×2──▶ DEFER (skip, resumable)
 Keypad answers need no confirmation: they are exact. Speech is always read back.
-The AI helper (llm.py) only proposes a value when the word list finds nothing;
-the caller still confirms it.
+The AI helper (llm.py) runs only when the word list finds nothing: it may pick an allowed
+value (still read back), answer a side question from the fact sheet, or spot "repeat" /
+"I want a person". Capped per call (LLM_MAX_PER_CALL) to keep cost down.
+
+Conversation, not a form:
+  - a problem the caller shares ("पैसे की तंगी है", "बीमार रहता हूँ") is never skipped: our own
+    empathy line, the topic noted for the district worker, then the same question. Travel, health
+    and family problems are remembered and offered as the answer when q5 comes ("आपने पहले बताया था…").
+  - "पिछला सवाल" / star key / "मेरी पढ़ाई वाला जवाब बदलना है" goes back to that question; after it,
+    the interview carries on where it was.
+  - answers are reasoned about as they come ("यानी आप परिवार का हुनर ही आगे बढ़ा रहे हैं"), and the
+    result says why (reasoning.py: pathway, skill gaps, local fit, constraints — PS 26097 R4).
 """
 
 import os
+import re
 from dataclasses import dataclass
 
-from . import extract, llm, recommend
+from . import extract, llm, places, prompts, reasoning, recommend
 from .districts import load as districts
 from .extract import lexicon
 from .prompts import YEARS_DTMF
@@ -31,6 +42,20 @@ TIMEOUT_MS = 6000
 LANGS = os.environ.get("ENGINE_LANGS", "hi").split(",")      # e.g. "hi,bho": asks at the start
 LANG_DTMF = {str(i + 1): lang for i, lang in enumerate(LANGS)}
 HELP_KEY = "#"          # any time: ask for a person to call back (0 and 9 are menu choices)
+BACK_KEY = "*"          # any time in the questions: the previous question again
+BACK_STATES = ("FIELD", "READBACK")
+AI_PER_CALL = int(os.environ.get("LLM_MAX_PER_CALL", 6))     # cost cap: then menus/keypad only
+MAX_ASIDES = 2          # side questions per question before we steer to the menu
+MAX_ASIDES_PER_CALL = int(os.environ.get("MAX_ASIDES_PER_CALL", 4))
+MAX_CALLS_PER_DAY = int(os.environ.get("MAX_CALLS_PER_DAY", 5))       # per phone number
+AI_PER_DAY = int(os.environ.get("LLM_DAILY_BUDGET", 500))             # all callers together
+KEEP = ("lang", "taught", "ai_used", "asides_total", "abuse", "problems", "hints")        # survive every step of a call
+PROGRESS = {"q4": "progress_half", "q7": "progress_last"}
+ACKS = ["ack", "ack_got_it", "ack_thanks", "ack_good"]      # rotate, so it does not sound like a machine
+Q5_HINT = {"health": "physical", "travel": "distance", "family": "care_duty"}   # a problem that answers q5
+CALLBACK_PROBLEMS = ("discrimination",)            # serious enough that a person calls back unasked
+YES_NO_STATES = {"CONSENT": "consent", "RESUME": "resume_offer", "READBACK": "readback_confirm",
+                 "GUARDIAN": "q5_guardian"}
 
 
 @dataclass
@@ -48,7 +73,24 @@ def _trade_dtmf():
 
 
 def _trade_clip(v):
+    """Known trade -> its recorded clip; a job the caller named in their own words -> spoken live."""
+    if isinstance(v, dict):
+        return {"kind": "tts", "text": v["label"]}
     return f"v-trade-{v.lower()}"
+
+
+def _place_clips(v):
+    if v.get("id"):
+        return [f"v-dist-{v['id'].lower()}"]
+    return [{"kind": "tts", "text": v["hi"]}] if v.get("hi") else ["v-dist-told"]   # never speak unchecked text
+
+
+def _pilot_place(pid):
+    """Pilot district id (word list / keypad) -> the stored place."""
+    if pid == "OTHER":
+        return {"id": "OTHER"}
+    d = next(x for x in districts() if x["id"] == pid)
+    return {"id": pid, "district": d["name"], "state": d["state"], "hi": d["hi"]}
 
 
 def _edu_clip(v):
@@ -65,7 +107,7 @@ def _field(name):
     return {
         "q0": dict(extract=extract.district,
                    dtmf={str(d["dtmf"]): d["id"] for d in districts()} | {"9": "OTHER"},
-                   clips=lambda v: [f"v-dist-{v.lower()}"]),
+                   clips=_place_clips),
         "q1": dict(extract=extract.education,
                    dtmf={k: {"class": c} for k, c in lex["education"]["dtmf"].items()},
                    clips=_edu_clip),
@@ -82,8 +124,72 @@ def _field(name):
     }[name]
 
 
+def ai_options(field):
+    """(allowed values -> Hindi label, compact description or None) the AI may choose from."""
+    lex = lexicon()
+    trades = {c["id"]: c["hi"] for c in lex["trades"]} | {"NEW": "सूची में नहीं: नया काम (नीचे देखो)"}
+    return {
+        "q0": ({}, "  (कोई सूची नहीं: भारत की कोई भी जगह)"),
+        "q1": ({"0": "कभी नहीं पढ़े", "literate": "थोड़ा-बहुत पढ़े, पढ़ना-लिखना आता है, या कक्षा साफ़ न बताएँ",
+                "5": "पाँचवीं तक",
+                "8": "आठवीं तक", "9": "नौवीं", "10": "दसवीं", "11": "ग्यारहवीं", "12": "बारहवीं",
+                "iti": "आईटीआई या डिप्लोमा", "15": "कॉलेज, ग्रेजुएट या उससे ज़्यादा"}, None),
+        "q2": (trades, None), "q3": (trades, None), "q4": (trades, None), "q7": (trades, None),
+        "q2_years": ({str(n): "" for n in range(61)}, "  0 से 60 तक, कितने साल (सिर्फ़ संख्या, जैसे \"12\")"),
+        "q5": ({"none": "कोई परेशानी नहीं", "distance": "दूर आने-जाने में परेशानी",
+                "physical": "शरीर से परेशानी या दिव्यांगता", "care_duty": "घर या बच्चों की ज़िम्मेदारी",
+                "cognitive": "समझने या याद रखने में परेशानी"}, None),
+        "q6": ({"self": "अपना काम", "wage": "नौकरी", "either": "कुछ भी"}, None),
+    }[field]
+
+
+SPOKEN_SCRIPT = r"[^\u0900-\u097F\u0980-\u09FF\u0B00-\u0B7F ,]"   # Devanagari, Bengali, Odia only
+OPEN_KIND = {"q0": "place", "q2": "trade", "q3": "trade", "q4": "trade", "q7": "trade"}
+
+
+def open_value(field, ai, lang="hi"):
+    """An open answer from the AI (any place, any job) -> stored value, or None if it fails the checks."""
+    if OPEN_KIND.get(field) == "place":
+        ok = places.check(ai.get("state"), ai.get("district"))
+        if not ok:
+            return None
+        state, district = ok
+        hi = re.sub(SPOKEN_SCRIPT, "", str(ai.get("hi") or ""))[:60] or None
+        if hi and extract.is_abusive(hi):
+            hi = None
+        return {"id": None, "district": district, "state": state, "hi": hi}
+    label = re.sub(SPOKEN_SCRIPT, "", str(ai.get("label") or "")).replace(",", "").strip()[:30]
+    if not label:
+        return None
+    if extract.is_abusive(label):
+        label = "कोई और काम" if lang == "hi" else prompts.catalogue(lang)["v-trade-other"]   # never read abuse back
+    known = recommend.sectors()
+    custom = {"id": "CUSTOM", "label": label,
+              "sectors": [x for x in (ai.get("sectors") or []) if x in known][:3],
+              "keywords": [k for k in (re.sub(r"[^a-z ]", "", str(k).lower()).strip()
+                                       for k in (ai.get("keywords") or [])) if 2 < len(k) < 25][:5]}
+    return [custom] if field in ("q4", "q7") else custom
+
+
+def from_ai(field, value):
+    """AI option key -> the value the flow stores for that field."""
+    if field == "q1":
+        return {"literate": {"class": 0, "literate": True}, "iti": {"class": 12, "iti": True}}.get(
+            value, {"class": int(value)})
+    if field == "q2_years":
+        return int(value)
+    if field in ("q4", "q7"):
+        return [value] if value != "OTHER" else []
+    return value
+
+
+YES_NO = ({"yes": "हाँ, सहमति", "no": "नहीं, असहमति"}, None)
+
+
 def _normalise(field, value, nbest=None):
     """Shape a raw extracted/keyed value into what is stored."""
+    if field == "q0" and isinstance(value, str):
+        return _pilot_place(value)
     if field == "q3":
         return {"concept": value, "status": extract.work_status(nbest or [], value)}
     if field in ("q4", "q7") and value == ["OTHER"]:
@@ -109,18 +215,201 @@ class Flow:
     # entry point ---------------------------------------------------------------
     def step(self, inp: Input) -> dict:
         at = self.state.get("at", "NEW")
-        if inp.kind == "opened" and at != "NEW":
+        spoken = inp.kind in ("audio", "text") and bool(inp.nbest) and at not in ("NEW", "DONE", "CLOSED")
+        if spoken and extract.is_abusive(inp.nbest[0]):
+            self._abuse()                          # guardrail: before anything else, no AI
+        elif spoken and extract.looks_like_injection(inp.nbest):
+            self._off_topic("injection")           # "ignore your instructions…": never reaches the AI
+        elif at in BACK_STATES and ((spoken and extract.wants_go_back(inp.nbest)) or
+                                    (inp.kind == "dtmf" and BACK_KEY in inp.digits)):
+            self._go_back("prev")                  # "पिछला सवाल", star key
+        elif at in BACK_STATES and spoken and extract.wants_change(inp.nbest):
+            ai = self._ai(inp, self.state.get("field") or "readback_confirm", {})   # which question?
+            self._go_back(ai["goto"] if ai and ai.get("goto") else "prev")
+        elif inp.kind == "opened" and at != "NEW":
             self._repeat()                         # channel reconnected: say the current prompt again
+        elif (inp.kind in ("audio", "text") and inp.nbest and at not in ("NEW", "DONE", "CLOSED")
+              and extract.wants_repeat(inp.nbest)):
+            self._repeat()                         # "फिर से बोलिए": same question, no try used up
         elif inp.kind == "dtmf" and HELP_KEY in inp.digits and self.bid and at not in ("DONE", "CLOSED"):
-            self.st.callback_request(self.bid, self.s["id"], at)
-            self.say = ["help_queued"]
-            self._repeat()                         # then carry on where they were
+            self._help()
         else:
+            if self._yes_no_state() and inp.kind in ("audio", "text") and inp.nbest and not self._yes_no(inp):
+                if self._is_echo(inp):
+                    return self._listen_again()
+                topic = extract.problem(inp.nbest)
+                if topic:                                  # "मेरे पास पैसे नहीं हैं" to "shall we start?"
+                    self._problem(topic)
+                    self.say.append("back_to_q")
+                    self._repeat()
+                    return self._reply()
+                handled, inp = self._ai_yes_no(inp)
+                if handled:
+                    return self._reply()
             getattr(self, "_" + at.lower())(inp)
         return self._reply()
 
+    def _listen_again(self):
+        """Nothing to say: we heard ourselves. Same state, same 'last said', no try used."""
+        self.say = []
+        self.state["last_said_keep"] = True
+        return self._reply()
+
+    # AI helper -----------------------------------------------------------------------
+    def _yes_no_state(self):
+        at = self.state.get("at")
+        return at in YES_NO_STATES or (at == "FIELD" and self.state.get("mode") == "confirm")
+
+    def _ai(self, inp, question_id, options, describe=None, open_kind=None):
+        """Ask the AI, within the per-call budget. None = not asked / no help."""
+        heard = inp.nbest or []
+        words = extract.norm(heard[0]).split() if heard else []
+        used = self.state.get("ai_used", 0)
+        if len(words) < 2:                                  # noise or a lone word: not worth a call
+            return None
+        if used >= AI_PER_CALL:
+            self._flag_once("cap_ai_call")
+            return None
+        if not self.st.take_ai_budget(AI_PER_DAY):          # today's budget for all callers is spent
+            self._flag_once("cap_ai_day")
+            return None
+        self.state["ai_used"] = used + 1
+        return llm.understand(prompts.catalogue("hi").get(question_id, question_id), options, heard, describe,
+                              open_kind, recommend.sectors() if open_kind == "trade" else None, lang=self.lang)
+
+    def _ai_yes_no(self, inp):
+        """Yes/no question, word list failed. -> (handled, input to pass on)."""
+        at = self.state["at"]
+        qid = YES_NO_STATES.get(at, "is_right")
+        if at == "FIELD":                                  # a spoken correction is not a yes/no
+            if _field(self.state["field"])["extract"](inp.nbest):
+                return False, inp
+        ai = self._ai(inp, qid, *YES_NO)
+        if not ai:
+            return False, inp
+        if ai["intent"] == "answer":
+            return False, Input("text", nbest=["हाँ" if ai["value"] == "yes" else "नहीं"])
+        return self._ai_other(ai), inp
+
+    def _ai_other(self, ai) -> bool:
+        """Side question / help / repeat / abuse / off-topic. True if handled (the turn is over)."""
+        if ai["intent"] == "question":
+            if self.state.get("asides", 0) >= MAX_ASIDES or self.state.get("asides_total", 0) >= MAX_ASIDES_PER_CALL:
+                self._off_topic("cap_asides")
+                return True
+            self.state["asides"] = self.state.get("asides", 0) + 1
+            self.state["asides_total"] = self.state.get("asides_total", 0) + 1
+            self.say = [f"fact-{ai['fact']}"]              # our own pre-recorded sentence, never AI text
+            self._repeat()                                 # answer, then the same question again
+            return True
+        if ai["intent"] == "problem":
+            self._problem(ai["problem"])
+            self.say.append("back_to_q")
+            self._repeat()
+            return True
+        if ai["intent"] == "goto":
+            self._go_back(ai["goto"])
+            return True
+        if ai["intent"] == "help":
+            self._help()
+            return True
+        if ai["intent"] == "repeat":
+            self._repeat()
+            return True
+        if ai["intent"] == "abuse":
+            self._abuse()
+            return True
+        if ai["intent"] == "offtopic":
+            self._off_topic("offtopic")
+            return True
+        return False
+
+    # guardrails ---------------------------------------------------------------------
+    def _flag(self, kind):
+        self.st.flag(self.s, kind, self.state.get("at"))
+
+    def _flag_once(self, kind):
+        if not self.state.get(f"flagged_{kind}"):
+            self.state[f"flagged_{kind}"] = True
+            self._flag(kind)
+
+    def _off_topic(self, kind):
+        """Steering attempt or too much off-topic talk: say what we are for, ask the same question."""
+        self._flag(kind)
+        self.say = ["stay_on_topic"]
+        self._repeat()
+
+    def _abuse(self):
+        """First time: a polite request. Second time: a polite goodbye."""
+        self.state["abuse"] = self.state.get("abuse", 0) + 1
+        self._flag("abuse")
+        if self.state["abuse"] >= 2:
+            return self._close("abuse_bye", completed=False)
+        self.say = ["abuse_warning"]
+        self._repeat()
+
+    def _help(self):
+        self.st.callback_request(self.bid, self.s["id"], self.state.get("at"))
+        self.say = ["help_queued"]
+        self._repeat()                                     # then carry on where they were
+
+    # conversation ------------------------------------------------------------------
+    def _problem(self, topic):
+        """The caller told us about a difficulty: acknowledge it (our words), note the topic
+        (never the words) for the district worker, remember it if it answers a later question."""
+        told = self.state.setdefault("problems", [])
+        if topic in told:
+            self.say.append("prob_noted")
+            return
+        told.append(topic)
+        if self.bid:
+            self.st.concern(self.bid, self.s["id"], topic, self.state.get("at"))
+            if topic in CALLBACK_PROBLEMS:
+                self.st.callback_request(self.bid, self.s["id"], self.state.get("at"))
+        if topic in Q5_HINT:
+            self.state.setdefault("hints", {})["q5"] = Q5_HINT[topic]
+        self.say.append(f"prob-{topic}")
+
+    def _go_back(self, target):
+        """'पिछला सवाल' or 'मेरी पढ़ाई वाला जवाब बदलना है': ask that question again, then carry on."""
+        at = self.state.get("at")
+        if at == "READBACK":                               # after the read-back: edit, back to the read-back
+            self.say.append("go_back_ok")
+            return self._ask("q7" if target == "prev" else target, editing=True)
+        if at != "FIELD":
+            return self._repeat()
+        cur = self.state["field"]
+        if target == "prev":
+            asked = self.st.answers(self.bid)
+            before = [f for f in FIELDS[:FIELDS.index(cur)] if f in asked]
+            if not before:
+                self.say.append("go_back_first")
+                return self._repeat()
+            target = before[-1]
+        if FIELDS.index(target) >= FIELDS.index(cur):     # only backwards: forward would skip questions
+            return self._repeat()
+        if target == "q2":                                 # new family trade: its years are asked again
+            y = self.st.answers(self.bid).get("q2_years")
+            if y and y["confirmed_at"]:
+                self.st.put_answer(self.bid, "q2_years", y["value"], y["confidence"], y["method"],
+                                   self.s["id"], confirmed=False)
+        self.say.append("go_back_ok")
+        self._ask(target, editing=self.state.get("editing", False), revisit=True)
+
+    def _is_echo(self, inp) -> bool:
+        """Speakerphone: the caller's audio can carry our own last prompt back to us. If what was
+        'heard' is mostly words we just said (and nothing else understood it), ignore it."""
+        heard = extract.norm(inp.nbest[0]).split() if inp.nbest else []
+        if len(heard) < 3:
+            return False
+        cat = prompts.catalogue(self.lang if self.lang in prompts.FULL else "hi")
+        said = set(extract.norm(" ".join(cat.get(i, i) for i in self.state.get("last_said", []))).split())
+        return bool(said) and sum(w in said for w in heard) / len(heard) >= 0.7
+
     def _reply(self):
         st = self.state
+        if not st.pop("last_said_keep", False):
+            st["last_said"] = [x for x in self.say if isinstance(x, str)]   # for the echo check next turn
         return {"session_id": self.s["id"],
                 "state": ":".join(filter(None, (st.get("at"), st.get("field"), st.get("mode")))),
                 "resumed_from": self.resumed_from, "lang": self.state.get("lang", "hi"),
@@ -128,33 +417,53 @@ class Flow:
                 "expect": self.expect, "turn_budget_ms": 1800, "terminal": self.terminal}
 
     def _go(self, at, **kw):
-        self.state = {"at": at, **kw, "lang": self.state.get("lang", "hi")}   # language survives every step
+        keep = {k: self.state[k] for k in KEEP if k in self.state}
+        self.state = {"at": at, **kw, **keep}
         self.s["state"] = self.state
 
-    # NEW / RESUME / CONSENT / PIN -------------------------------------------------
+    # NEW / RESUME / CONSENT ------------------------------------------------------
     def _new(self, inp):
         if len(LANGS) > 1:
             self._go("LANG", tries=0)
-            self.say = ["lang_select"]
+            self.say = self._lang_menu()
             self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
             return
         self._begin()
 
     def _lang(self, inp):
-        key = inp.digits[-1:] if inp.kind == "dtmf" else ""
-        if key in LANG_DTMF or self.state["tries"] >= 1:        # second miss: default language
-            self.state["lang"] = LANG_DTMF.get(key, LANGS[0])
+        key = inp.digits[-1:] if inp.kind == "dtmf" else (extract.spoken_key(inp.nbest) or "")
+        named = extract.language(inp.nbest) if inp.kind in ("audio", "text") else None   # "বাংলা"
+        if named in LANGS or key in LANG_DTMF or self.state["tries"] >= 1:   # second miss: default
+            self.state["lang"] = named if named in LANGS else LANG_DTMF.get(key, LANGS[0])
             return self._begin()
         self.state["tries"] += 1
-        self.say = ["lang_select"]
+        self.say = self._lang_menu()
         self.expect = {"kind": "enum", "dtmf_map": LANG_DTMF, "timeout_ms": TIMEOUT_MS}
 
+    @staticmethod
+    def _lang_menu():
+        """'हिंदी के लिए एक दबाइए। বাংলার জন্য দুই টিপুন। …', each line in its own language's voice."""
+        return [f"lang_pick.{lang}" for lang in LANGS]
+
+    @property
+    def lang(self):
+        return self.state.get("lang", "hi")
+
     def _begin(self):
+        if self.st.calls_today(self.s["phone_hash"]) > MAX_CALLS_PER_DAY:
+            self._flag("cap_calls")                        # spam / cost guard: this number, today
+            self.say = ["call_limit"]
+            self.terminal = True
+            self.expect = {"kind": "none"}
+            self._go("CLOSED")
+            return
         prev = self.st.resumable(self.s["phone_hash"])
         if prev and self.st.answers(prev["id"]):
-            self._go("RESUME", target=prev["id"], pin="", fails=0, silence=0)
+            # same phone, unfinished interview: ask, don't assume (it may be someone else on it)
+            self._go("RESUME", target=prev["id"], tries=0)
             self.say = ["resume_offer"]
-            self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
+            self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF,
+                           "timeout_ms": TIMEOUT_MS}
         else:
             self._start_new(["welcome", "consent"])
 
@@ -165,41 +474,26 @@ class Flow:
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _resume(self, inp):
-        st = self.state
-        if inp.kind == "dtmf":
-            if "*" in inp.digits:
-                return self._start_new(["new_start", "consent"])
-            st["pin"] += "".join(ch for ch in inp.digits if ch.isdigit())
-            if len(st["pin"]) < 4:
-                self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
-                return
-            target = self.st.beneficiary(st["target"])
-            if self.st.pin_hash(target["id"], st["pin"][:4]) == target["pin_hash"]:
-                self.s["beneficiary_id"] = target["id"]
-                self.say = ["resume_ok"]
-                self.resumed_from = self._next_field(None) or "READBACK"
-                return self._advance(None)
-            st["fails"] += 1
-            st["pin"] = ""
-            if st["fails"] >= 2:
-                return self._start_new(["new_start", "consent"])   # never a lockout: welfare line
-            self.say = ["pin_wrong", "resume_offer"]
-        else:                                                  # speech or silence: we need keys
-            st["silence"] += 1
-            if st["silence"] >= MAX_SILENCE:
-                return self._start_new(["new_start", "consent"])
-            self.say = ["nudge", "resume_offer"]
-        self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
+        """'Continue the previous conversation?' 1/yes = continue, 2/no = start fresh."""
+        ans = self._yes_no(inp)
+        if ans == "yes":
+            self.s["beneficiary_id"] = self.state["target"]
+            self.say = ["resume_ok"]
+            self.resumed_from = self._next_field(None) or "READBACK"
+            return self._advance(None)
+        if ans == "no" or self.state["tries"] >= 1:           # unclear twice: fresh start, never stuck
+            return self._start_new(["new_start", "consent"])
+        self.state["tries"] += 1
+        self.say = ["nudge" if inp.kind == "timeout" else "reask", "resume_offer"]
+        self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _consent(self, inp):
         ans = self._yes_no(inp)
         if ans == "yes":
             self.st.set_beneficiary(self.bid, consent_state="GIVEN")
             self.st.consent(self.bid, "DTMF_YES" if inp.kind == "dtmf" else "SPOKEN_YES", self.channel)
-            self._go("PIN_SET", pin="", tries=0)
-            self.say = ["pin_set"]
-            self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
-            return
+            self.say = ["ack"]
+            return self._advance(None)
         if ans == "no":
             return self._close("close_polite")
         self.state["tries"] += 1
@@ -207,23 +501,6 @@ class Flow:
             return self._close("close_polite")
         self.say = (["nudge"] if inp.kind == "timeout" else ["reask"]) + ["consent"]
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
-
-    def _pin_set(self, inp):
-        st = self.state
-        if inp.kind == "dtmf":
-            st["pin"] += "".join(ch for ch in inp.digits if ch.isdigit())
-            if len(st["pin"]) >= 4:
-                self.st.set_beneficiary(self.bid, pin_hash=self.st.pin_hash(self.bid, st["pin"][:4]))
-                self.say = ["pin_saved"]
-                return self._advance(None)
-            self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
-            return
-        st["tries"] += 1
-        if st["tries"] >= 2:                                   # no PIN: interview goes on, just not resumable
-            self.say = ["ack"]
-            return self._advance(None)
-        self.say = ["nudge" if inp.kind == "timeout" else "reask", "pin_set"]
-        self.expect = {"kind": "digits", "length": 4, "timeout_ms": TIMEOUT_MS}
 
     # fields -------------------------------------------------------------------------
     def _next_field(self, after):
@@ -240,13 +517,27 @@ class Flow:
             return self._readback_start()
         self._ask(nxt)
 
-    def _ask(self, field, editing=False):
-        self._go("FIELD", field=field, mode="ask", tries=0, silence=0, cand=None, editing=editing)
+    def _ask(self, field, editing=False, revisit=False):
+        self._go("FIELD", field=field, mode="ask", tries=0, silence=0, cand=None, editing=editing,
+                 revisit=revisit)
+        if not (editing or revisit) and field in PROGRESS:
+            self.say.append(PROGRESS[field])               # "आधे सवाल हो गए…" / "बस आख़िरी सवाल"
+        hint = self.state.get("hints", {}).pop(field, None)
+        if hint and not (editing or revisit):              # told us earlier: check it, don't ask again
+            return self._confirm({"value": hint, "conf": 0.7, "method": "EARLIER"}, lead="you_told_earlier")
         self.say.append(field)
         self.expect = {"kind": "free", "dtmf_map": _field(field)["dtmf"], "timeout_ms": TIMEOUT_MS}
 
     def _menu(self, prefix=()):
         st = self.state
+        if st["field"] == "q0":
+            # no "1 for Gaya…" list: any place in India is allowed, so ask in words once more
+            if st.get("mode") == "menu":
+                return self._defer()
+            st["mode"] = "menu"
+            self.say += ["q0_again"]
+            self.expect = {"kind": "free", "timeout_ms": TIMEOUT_MS}
+            return
         st["mode"] = "menu"
         self.say += [*prefix, f"{st['field']}_menu"]
         self.expect = {"kind": "enum", "dtmf_map": _field(st["field"])["dtmf"], "timeout_ms": TIMEOUT_MS}
@@ -277,11 +568,51 @@ class Flow:
         # speech (audio or text)
         if inp.nbest is None:                                  # no speech-to-text available
             return self._menu()
+        if st["mode"] == "menu":                               # "नौ" said instead of pressing 9
+            key = extract.spoken_key(inp.nbest)
+            if key is not None:
+                return self._field(Input("dtmf", digits=key))
         got = spec["extract"](inp.nbest) if inp.nbest else None
+        topic = extract.problem(inp.nbest)
+        if topic and field == "q5" and topic in Q5_HINT:  # at q5 that problem *is* the answer
+            got, topic = got or (Q5_HINT[topic], 0.7, "LEXICON"), None
+        if topic == "no_work" and field == "q3" and got:  # "अभी कोई काम नहीं है": the answer, with its own kind word
+            topic = None
+        if (got is None and st["mode"] == "ask" and inp.nbest and extract.leftover_confirmation(inp.nbest)):
+            self.say = []                                  # "हाँ, सही है" said twice to the last read-back:
+            self.state["last_said_keep"] = True            # not an answer to this question, keep listening
+            return
+        if (got is None and st["mode"] == "ask" and inp.nbest and extract.yes_no(inp.nbest) and not topic
+                and len(extract.norm(inp.nbest[0]).split()) <= 3):          # "पैसे नहीं हैं" is a problem, not a "no"
+            # a bare "हाँ"/"नहीं" to an open question ("what do you want to learn?") is not a wrong
+            # answer, it means "I didn't catch the question": offer the choices, no scolding, no try used
+            return self._menu()
+        if got is None and inp.nbest and self._is_echo(inp):
+            self.say = []                                  # our own prompt came back: listen again
+            self.state["last_said_keep"] = True
+            return
         if got is None and inp.nbest:
-            got = llm.classify(field, inp.nbest)
+            ai = self._ai(inp, field, *ai_options(field), open_kind=OPEN_KIND.get(field))
+            if ai and ai["intent"] == "answer":
+                topic = ai.get("problem") or topic         # an answer that also carries a problem
+                opened = ai["value"] in ("PLACE", "NEW")
+                value = open_value(field, ai, self.lang) if opened else from_ai(field, ai["value"])
+                if value is not None:
+                    got = (value, 0.75, "LLM")
+            elif ai and not (topic and ai["intent"] in ("unclear", "offtopic")) and self._ai_other(ai):
+                return
+        if got is None and topic:                          # a problem, not an answer: never ignored
+            self._problem(topic)
+            self.say += ["back_to_q", field if st["mode"] == "ask" else f"{field}_menu"]
+            return
         if got:
             value, conf, method = got
+            if topic and not (field == "q5" and topic in Q5_HINT):
+                self._problem(topic)                       # "सिलाई करती हूँ, पर पैसे नहीं मिलते"
+            if field == "q5" and value == "none" and extract.yes_no(inp.nbest):
+                # "कोई परेशानी है?" → "नहीं" is already a direct answer; reading it back
+                # ("…नहीं, सही है?" → "नहीं") turned into a double negative on real calls
+                return self._accept(value, conf, method)
             cand = {"value": _normalise(field, value, inp.nbest), "conf": conf, "method": method}
             if field == "q2" and value not in ("NONE", "OTHER"):
                 yrs = extract.years(inp.nbest)                 # "बारह साल से बुनाई" answers two fields
@@ -292,16 +623,17 @@ class Flow:
         if st["tries"] >= MAX_ASK + MAX_MENU:
             return self._defer()
         if st["tries"] >= MAX_ASK or st["mode"] == "menu":
-            return self._menu(["reask"])
+            return self._menu(["reask_gentle"])
         self.say = ["reask", field]
 
-    def _confirm(self, cand):
+    def _confirm(self, cand, lead="you_said"):
         st = self.state
         st.update(mode="confirm", cand=cand)
         clips = _field(st["field"])["clips"](cand["value"])
         if "years" in cand:
             clips = clips + [f"v-years-{min(cand['years'], 40)}"]
-        self.say += ["you_said", *clips, "is_right"]
+        self.say += [lead, *clips, "is_right_short" if st.get("taught") else "is_right"]
+        st["taught"] = True                            # the "हाँ या नहीं, या 1 या 2" line once is enough
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _confirming(self, inp, field, spec):
@@ -325,7 +657,7 @@ class Flow:
         if st["tries"] >= MAX_ASK + MAX_MENU:
             return self._defer()
         if st["tries"] >= MAX_ASK:
-            return self._menu(["reask"])
+            return self._menu(["reask_gentle"])
         self.say = ["reask", field]
         self.expect = {"kind": "free", "dtmf_map": spec["dtmf"], "timeout_ms": TIMEOUT_MS}
 
@@ -333,10 +665,12 @@ class Flow:
         field = self.state["field"]
         self.st.put_answer(self.bid, field, value, conf, method, self.s["id"])
         if field == "q0":
-            self.st.set_beneficiary(self.bid, district=value)
+            where = value.get("id") if value.get("id") and value["id"] != "OTHER" else \
+                ", ".join(x for x in (value.get("district"), value.get("state")) if x) or "OTHER"
+            self.st.set_beneficiary(self.bid, district=where)
         if field == "q2" and value in ("NONE", "OTHER"):
             self.st.put_answer(self.bid, "q2_years", 0, 1.0, "IMPLIED", self.s["id"])
-        self.say.append("ack")
+        self.say.append(self._after_answer(field, value, method))
         if field == "q5" and value == "cognitive":
             self._go("GUARDIAN", tries=0, editing=self.state.get("editing"))
             self.say.append("q5_guardian")
@@ -344,9 +678,34 @@ class Flow:
             return
         self._advance(field)
 
+    def _after_answer(self, field, value, method=None):
+        """What a person would say back: a varied thanks, or a warm line where the answer calls
+        for one. Only true statements (NSQF levels 1-2 need no schooling; experience counts)."""
+        if field == "q1" and isinstance(value, dict) and not value.get("class") and not value.get("literate"):
+            return "emp_no_school"
+        if field == "q2_years" and isinstance(value, int) and value >= 5:
+            return "emp_experience"
+        if field == "q3" and isinstance(value, dict) and value.get("concept") in ("NONE", "LABOUR"):
+            return "emp_no_work"
+        if field == "q5" and value in ("distance", "physical", "care_duty", "cognitive"):
+            return "emp_difficulty" if method != "EARLIER" else "ack"     # already said sorry once
+        # reasoning out loud: link this answer to an earlier one, the way a counsellor would
+        v = {k: a["value"] for k, a in self.st.answers(self.bid).items() if a["confirmed_at"]}
+        if field == "q3" and isinstance(value, dict) and reasoning.same(value.get("concept"), v.get("q2")):
+            return "reason_same_trade"
+        if field == "q7" and any(reasoning.same(i, d) for i in v.get("q4") or [] for d in value or []):
+            return "reason_demand_match"
+        if field == "q6" and value == "self" and (
+                reasoning.REAL(v.get("q2")) and (v.get("q2_years") or 0) >= 3
+                or reasoning.REAL((v.get("q3") or {}).get("concept"))):
+            return "reason_skill_to_business"
+        return ACKS[FIELDS.index(field) % len(ACKS)]
+
     def _defer(self):
         field = self.state["field"]
-        self.st.put_answer(self.bid, field, None, 0.0, "DEFER", self.s["id"], confirmed=False)
+        old = self.st.answers(self.bid).get(field) if self.state.get("revisit") else None
+        if not (old and old["value"] is not None):          # went back, then gave up: keep the old answer
+            self.st.put_answer(self.bid, field, None, 0.0, "DEFER", self.s["id"], confirmed=False)
         self.say.append("deferred")
         self._advance(field)
 
@@ -398,7 +757,7 @@ class Flow:
         self.expect = {"kind": "enum", "options": ["yes", "no"], "dtmf_map": YES_NO_DTMF, "timeout_ms": TIMEOUT_MS}
 
     def _pick(self, inp):
-        key = inp.digits[-1:] if inp.kind == "dtmf" else ""
+        key = inp.digits[-1:] if inp.kind == "dtmf" else (extract.spoken_key(inp.nbest) or "")
         if key in {str(i) for i in range(1, 8)}:
             return self._ask(f"q{key}", editing=True)
         self.state["tries"] += 1
@@ -415,7 +774,10 @@ class Flow:
                    "factors": x.factors}
                   for x in result["eligible"] + ([result["near_miss"]] if result["near_miss"] else [])]
         self.st.save_recommendation(self.bid, result, ranked)
-        self.say += ["recommend_intro", {"kind": "tts", "text": recommend.spoken(result)}, "goodbye"]
+        why = reasoning.assess(prof, result, self.st.concerns(self.bid), self.lang)
+        self.st.save_insight(self.bid, why)
+        self.say += ["recommend_intro", {"kind": "tts", "text": recommend.spoken(result, why["why"], self.lang)},
+                     "goodbye"]
         self._close(None)
 
     def _close(self, prompt, completed=True):
@@ -437,10 +799,12 @@ class Flow:
         at, st = self.state.get("at"), self.state
         if at == "FIELD":
             self.say.append(st["field"] if st["mode"] == "ask" else
-                            f"{st['field']}_menu" if st["mode"] == "menu" else "is_right")
-        elif at in ("CONSENT", "RESUME", "PIN_SET", "LANG", "PICK", "GUARDIAN"):
-            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer", "PIN_SET": "pin_set",
-                             "LANG": "lang_select", "PICK": "readback_pick",
+                            f"{st['field']}_menu" if st["mode"] == "menu" else
+                            "is_right_short" if st.get("taught") else "is_right")
+        elif at == "LANG":
+            self.say += self._lang_menu()
+        elif at in ("CONSENT", "RESUME", "PICK", "GUARDIAN"):
+            self.say.append({"CONSENT": "consent", "RESUME": "resume_offer", "PICK": "readback_pick",
                              "GUARDIAN": "q5_guardian"}[at])
         elif at == "READBACK":
             self._readback_start()

@@ -45,7 +45,7 @@
   <p class="sub">Talks to this adapter exactly like Exotel does. Local testing only.</p>
   <div class="card">
     <label for="caller">Caller number (same number = resume path)</label>
-    <input id="caller" type="text" value="+919812345678" autocomplete="off">
+    <input id="caller" type="text" value="" autocomplete="off">
     <div class="opt">
       <input id="headphones" type="checkbox">
       <label for="headphones" style="margin:0">I'm on headphones (lets me talk over prompts)</label>
@@ -177,6 +177,9 @@ function teardown() {
   ws = null; ctx = null; frameNo = 0;
   setState("Idle"); $("call").disabled = false; $("hang").disabled = true;
 }
+
+// a new number each page load, so every test call starts fresh (type an old one to test resume)
+$("caller").value = "+91" + (7000000000 + Math.floor(Math.random() * 2999999999));
 
 for (const k of ["1","2","3","4","5","6","7","8","9","*","0","#"]) {
   const b = document.createElement("button"); b.textContent = k; b.setAttribute("aria-label", "Key " + k);

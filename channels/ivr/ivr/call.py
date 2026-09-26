@@ -4,8 +4,10 @@ Timers count 20 ms caller frames, not wall-clock: Exotel streams audio non-stop,
 frame count is a clock that needs no extra task and makes tests instant.
 """
 
+import array
 import asyncio
 import logging
+import math
 import os
 import re
 
@@ -18,6 +20,29 @@ log = logging.getLogger("ivr")
 
 def _ms(name, default):
     return int(os.environ.get(name, default))
+
+
+def _debug_save(stream_sid, turn, pcm):
+    """IVR_DEBUG_DIR set: keep each caller utterance as a WAV, for tuning on a real line.
+    Off by default and for test calls only: product calls must not store audio."""
+    folder = os.environ.get("IVR_DEBUG_DIR")
+    if not folder:
+        return
+    import array
+    import math
+    import wave
+    from pathlib import Path
+
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    path = Path(folder) / f"{stream_sid[-8:]}-{turn:02d}.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(pcm)
+    a = array.array("h", pcm)
+    rms = math.sqrt(sum(v * v for v in a) / max(len(a), 1))
+    log.info("debug: saved %s (%d ms, rms %.0f)", path.name, len(pcm) // 16, rms)
 
 
 class Call:
@@ -40,9 +65,23 @@ class Call:
         self.engine_done = False       # ai/ itself ended the session
         self.finished = False          # goodbye heard: hang up
         self.no_input_frames = _ms("NO_INPUT_TIMEOUT_MS", 6000) // 20
-        self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 120)
-        self.filler_after = _ms("FILLER_AFTER_MS", 700) / 1000
+        # 120 ms cut every prompt on a real line; 400 ms still cut questions on "हाँ जी"/"अच्छा",
+        # which Hindi speakers say while listening. Only a real attempt to talk interrupts.
+        self.barge_in_ms = _ms("BARGE_IN_SPEECH_MS", 900)
+        self.filler_after = _ms("FILLER_AFTER_MS", 1000) / 1000   # Sarvam often takes 0.7-0.8 s
+        # the carrier's own announcement ("this call is being recorded") must not cut the welcome
+        self.barge_grace_frames = _ms("BARGE_IN_GRACE_MS", 4000) // 20
         self.max_frames = _ms("MAX_CALL_SECONDS", 600) * 50
+        # speakerphone: our own voice comes back in the caller's audio
+        self.echo_ratio = float(os.environ.get("BARGE_IN_ECHO_RATIO", 2.5))   # louder than the echo by this
+        self.echo_floor = _ms("BARGE_IN_MIN_RMS", 300)
+        self.echo_level = 0.0          # running loudness of what comes back while we speak
+        self.recent_rms: list = []     # last 300 ms of caller loudness
+        self.loud_ms = 0               # caller speech clearly above the echo, during a prompt
+        self.guard_frames = _ms("POST_PROMPT_GUARD_MS", 250) // 20
+        self.guard = 0                 # frames still ignored after a prompt ends (echo tail)
+        self.echo_learn_frames = _ms("ECHO_LEARN_MS", 300) // 20
+        self.echo_learn = 0            # frames left to measure the echo at the start of a prompt
 
     # --- events from Exotel ---------------------------------------------------
 
@@ -65,6 +104,8 @@ class Call:
             self.quiet = 0
             if not self.vad.in_speech:  # caller may already have started answering
                 self.vad.reset()
+                self.guard = self.guard_frames      # skip the echo tail of our own prompt
+            self.loud_ms = 0
             self.finished = self.done
 
     async def _on_audio(self, frame):
@@ -76,13 +117,24 @@ class Call:
             await self._end("goodbye")
             return
 
+        if self.guard:
+            self.guard -= 1
+            if not self.guard:
+                self.vad.reset()
+            return
+
         pcm = self.vad.feed(frame)
         if self.speaking:
-            if self.vad.speech_ms >= self.barge_in_ms:
+            if self._louder_than_echo(frame) and self.vad.in_speech:
+                self.loud_ms += 20
+            else:
+                self.loud_ms = max(0, self.loud_ms - 10)     # brief dips are fine, echo decays it
+            if self.loud_ms >= self.barge_in_ms and self.frames > self.barge_grace_frames:
                 await self._barge_in()
             return                     # an utterance that ends mid-prompt is too short to count
 
         if pcm:
+            _debug_save(self.stream_sid, self.turn_no, pcm)
             await self._turn(engine.audio(pcm), speech_ms=len(pcm) // 16)
         elif self.vad.in_speech:
             self.quiet = 0
@@ -91,6 +143,23 @@ class Call:
             if self.quiet >= self.no_input_frames:
                 self.quiet = 0
                 await self._turn(engine.TIMEOUT)
+
+    def _louder_than_echo(self, frame) -> bool:
+        """On speakerphone our prompt comes back into the call. A real interruption is the
+        caller talking into the phone, clearly louder than that echo; the echo itself is not.
+        Loudness is averaged over the last 300 ms (single 20 ms slices of speech swing 3-4x),
+        and the first ECHO_LEARN_MS of every prompt only measure the echo."""
+        a = array.array("h", frame)
+        self.recent_rms = (self.recent_rms + [math.sqrt(sum(v * v for v in a) / len(a))])[-15:]
+        avg = sum(self.recent_rms) / len(self.recent_rms)
+        if self.echo_learn:
+            self.echo_learn -= 1
+            self.echo_level = avg
+            return False
+        loud = avg > max(self.echo_floor, self.echo_ratio * self.echo_level)
+        if not loud:                   # keep following the echo, slowly
+            self.echo_level = 0.95 * self.echo_level + 0.05 * avg
+        return loud
 
     # --- actions --------------------------------------------------------------
 
@@ -145,6 +214,8 @@ class Call:
         if a text-to-speech sentence fails."""
         if not say:
             return False
+        if not self.speaking:
+            self.echo_learn = self.echo_learn_frames     # a new prompt: measure its echo first
         self.speaking = True
         self.feeder = asyncio.create_task(self._feed(say, self._mark() if mark else None))
         return True
@@ -172,6 +243,7 @@ class Call:
         await self.player.stop()
 
     async def _barge_in(self):
+        self.loud_ms = 0
         await self._stop_audio()
         self.speaking = False
         self.barged = True

@@ -28,7 +28,7 @@ These are in the design, not later tweaks:
 3. **Adapter and engine on the same machine**, engine call over localhost with a kept-alive
    HTTP connection.
 4. **Everything in one region (Mumbai)**, speech-to-text provider included.
-5. **Filler "hmm…" at 700 ms** so any slow turn still feels human.
+5. **Filler "hmm…" after 1 s** so any slow turn still feels human (700 ms fired on most Sarvam turns in real calls).
 6. **Real-time paced playback**, so interruption stops audio immediately.
 
 ---
