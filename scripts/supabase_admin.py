@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import random
 import sys
 import urllib.error
 import urllib.request
@@ -268,64 +267,95 @@ def cmd_demo() -> None:
     point of it is the CAG comparison: run the recommender over a cohort and see whether the output
     concentrates the way PMKVY's did (40% of certifications in 10 job-roles).
     """
-    rng = random.Random(26097)
-    trades = [
-        "TRADE.TAILORING", "TRADE.HANDLOOM_WEAVING", "TRADE.DAIRY", "TRADE.GOAT_REARING",
-        "TRADE.POULTRY", "TRADE.MASONRY", "TRADE.CARPENTRY", "TRADE.ELECTRICIAN",
-        "TRADE.BEAUTY_PARLOUR", "TRADE.FOOD_PROCESSING", "TRADE.MOBILE_REPAIR",
-        "TRADE.BAMBOO_CANE", "TRADE.FISHERIES", "TRADE.BEEKEEPING", "TRADE.RETAIL_SHOP",
-    ]
-    educations = ["none", "read_write", "primary", "middle", "secondary", "higher_sec"]
     n = 60
 
-    blocks = run_sql("select b.id, b.district_id from block b limit 12")
-    if not blocks:
+    blocks = run_sql("select count(*) as n from block")
+    if not blocks or blocks[0]["n"] == 0:
         raise SystemExit("seed the districts first: python3 scripts/supabase_admin.py seed")
 
-    made = 0
-    for i in range(n):
-        blk = rng.choice(blocks)
-        is_woman = rng.random() < 0.42
-        edu = rng.choice(educations)
-        trade = rng.choice(trades)
-        interest = rng.sample(trades, k=rng.randint(1, 2))
-        years = rng.randint(0, 20)
+    # ONE round trip, not 240.
+    #
+    # The first version of this looped in Python and issued four API calls per beneficiary — insert
+    # the person, insert the session, insert seven answers, insert the consent event. At sixty
+    # people that is 240 sequential HTTPS requests against the Management API, which takes minutes
+    # and looks exactly like a hang. Postgres can generate the whole cohort itself.
+    #
+    # Data-modifying CTEs are the mechanism: each one runs exactly once and to completion, whether
+    # or not the outer query reads it. `generate_series` supplies the index, and every "random"
+    # choice is a modular index into an array — deterministic, so re-running produces the same
+    # cohort and the spread chart is comparable between runs. A seeded RNG in Python would have
+    # given that too, but not in one statement.
+    sql = f"""
+with seq as (
+  select g,
+    (array['TRADE.TAILORING','TRADE.HANDLOOM_WEAVING','TRADE.DAIRY','TRADE.GOAT_REARING',
+           'TRADE.POULTRY','TRADE.MASONRY','TRADE.CARPENTRY','TRADE.ELECTRICIAN',
+           'TRADE.BEAUTY_PARLOUR','TRADE.FOOD_PROCESSING','TRADE.MOBILE_REPAIR',
+           'TRADE.BAMBOO_CANE','TRADE.FISHERIES','TRADE.BEEKEEPING','TRADE.RETAIL_SHOP'])[1 + (g % 15)] as trade,
+    (array['TRADE.TAILORING','TRADE.HANDLOOM_WEAVING','TRADE.DAIRY','TRADE.GOAT_REARING',
+           'TRADE.POULTRY','TRADE.MASONRY','TRADE.CARPENTRY','TRADE.ELECTRICIAN',
+           'TRADE.BEAUTY_PARLOUR','TRADE.FOOD_PROCESSING','TRADE.MOBILE_REPAIR',
+           'TRADE.BAMBOO_CANE','TRADE.FISHERIES','TRADE.BEEKEEPING','TRADE.RETAIL_SHOP'])[1 + ((g * 7) % 15)] as interest,
+    (array['none','read_write','primary','middle','secondary','higher_sec'])[1 + (g % 6)] as edu,
+    (array['wage','self','casual','none'])[1 + (g % 4)] as status,
+    (array['self','wage','either'])[1 + (g % 3)] as pref,
+    (array['none','distance','care_duty'])[1 + ((g * 5) % 3)] as mob,
+    (array[3,5,10,30])[1 + (g % 4)] as radius,
+    (g * 3) % 21 as years,
+    ((g * 37) % 100) < 42 as is_woman
+  from generate_series(0, {n - 1}) g
+),
+blk as (
+  select id, district_id, row_number() over (order by id) as rn, count(*) over () as total from block
+),
+ins_b as (
+  insert into beneficiary (phone_hash, ordinal, district_id, block_id, village_name, is_woman, consent_state)
+  select decode(md5('rc097-demo-' || s.g), 'hex'), 1, b.district_id, b.id,
+         'DEMO — synthetic', s.is_woman, 'GIVEN'
+  from seq s join blk b on b.rn = 1 + (s.g % b.total)
+  returning id, phone_hash
+),
+ins_s as (
+  insert into session (beneficiary_id, channel, fsm_state, status)
+  select id, 'app', 'CLOSE', 'COMPLETED' from ins_b
+  returning id as session_id, beneficiary_id
+),
+joined as (
+  select s.*, b.id as bid, ss.session_id
+  from seq s
+  join ins_b b on b.phone_hash = decode(md5('rc097-demo-' || s.g), 'hex')
+  join ins_s ss on ss.beneficiary_id = b.id
+),
+ins_a as (
+  insert into answer (beneficiary_id, field_no, raw_transcript, nbest, value, confidence, method,
+                      confirmed_at, session_id, updated_at)
+  select j.bid, v.field_no, null, null, v.val, 0.9, 'LEXICON', now(), j.session_id, now()
+  from joined j
+  cross join lateral (values
+    (1, jsonb_build_object('kind','education','education', j.edu)),
+    (2, jsonb_build_object('kind','occupation','conceptId', j.trade, 'years', j.years)),
+    (3, jsonb_build_object('kind','livelihood','conceptId', to_jsonb(null::text), 'status', j.status)),
+    (4, jsonb_build_object('kind','concepts','conceptIds', jsonb_build_array(j.interest, j.trade))),
+    (5, jsonb_build_object('kind','mobility','constraint', j.mob, 'radiusKm', j.radius)),
+    (6, jsonb_build_object('kind','pref','pref', j.pref)),
+    (7, jsonb_build_object('kind','local','conceptIds', jsonb_build_array(j.interest), 'note', to_jsonb(null::text)))
+  ) as v(field_no, val)
+  returning beneficiary_id
+)
+insert into consent_event (beneficiary_id, kind, script_version, channel, evidence)
+select bid, 'SPOKEN_YES', 'consent.ask.v1', 'app', '{{"demo": true}}'::jsonb from joined;
+"""
 
-        b = run_sql(
-            "insert into beneficiary (phone_hash, ordinal, district_id, block_id, village_name, is_woman, consent_state) "
-            f"values (decode(md5('demo{i}'), 'hex'), 1, {_esc(blk['district_id'])}::uuid, {_esc(blk['id'])}::uuid, "
-            f"'DEMO — synthetic', {str(is_woman).lower()}, 'GIVEN') returning id"
-        )
-        bid = b[0]["id"]
-        sid = run_sql(
-            f"insert into session (beneficiary_id, channel, fsm_state, status) values "
-            f"({_esc(bid)}::uuid, 'app', 'CLOSE', 'COMPLETED') returning id"
-        )[0]["id"]
+    # Idempotent: the cascade clears sessions, answers, consent and recommendations with them.
+    run_sql("delete from beneficiary where village_name = 'DEMO — synthetic'")
+    run_sql(sql)
 
-        vals = [
-            (1, {"kind": "education", "education": edu}),
-            (2, {"kind": "occupation", "conceptId": trade, "years": years}),
-            (3, {"kind": "livelihood", "conceptId": None, "status": rng.choice(["wage", "self", "casual", "none"])}),
-            (4, {"kind": "concepts", "conceptIds": interest}),
-            (5, {"kind": "mobility", "constraint": rng.choice(["none", "distance", "care_duty"]), "radiusKm": rng.choice([3, 5, 10, 30])}),
-            (6, {"kind": "pref", "pref": rng.choice(["self", "wage", "either"])}),
-            (7, {"kind": "local", "conceptIds": rng.sample(trades, k=1), "note": None}),
-        ]
-        rows = ", ".join(
-            f"({_esc(bid)}::uuid, {fno}, null, null, {_esc(json.dumps(v))}::jsonb, 0.9, 'LEXICON', now(), {_esc(sid)}::uuid, now())"
-            for fno, v in vals
-        )
-        run_sql(
-            "insert into answer (beneficiary_id, field_no, raw_transcript, nbest, value, confidence, method, "
-            "confirmed_at, session_id, updated_at) values " + rows
-        )
-        run_sql(
-            "insert into consent_event (beneficiary_id, kind, script_version, channel, evidence) values "
-            f"({_esc(bid)}::uuid, 'SPOKEN_YES', 'consent.ask.v1', 'app', '{{\"demo\":true}}'::jsonb)"
-        )
-        made += 1
-
-    print(f"Demo cohort: {made} synthetic beneficiaries, all tagged 'DEMO — synthetic'.")
+    made = run_sql("select count(*) as n from beneficiary where village_name = 'DEMO — synthetic'")[0]["n"]
+    answers = run_sql(
+        "select count(*) as n from answer a join beneficiary b on b.id = a.beneficiary_id "
+        "where b.village_name = 'DEMO — synthetic'"
+    )[0]["n"]
+    print(f"Demo cohort: {made} synthetic beneficiaries, {answers} answers, all tagged 'DEMO — synthetic'.")
     print("Delete them with:  delete from beneficiary where village_name = 'DEMO — synthetic';")
 
 
