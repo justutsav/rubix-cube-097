@@ -108,6 +108,90 @@ class Scene:
         self.elements.append(e)
         return e
 
+    def fitbox(self, eid, x, y, w, bg="transparent", stroke="#1e1e1e", label="",
+               size=14, sw=2, pad=14, title=None, title_size=18, title_color=None,
+               min_h=0) -> dict:
+        """A box whose height is computed from its own text, so nothing can overflow.
+
+        The hand-placed version of this diagram put title and body in separate free-floating text
+        elements sized by eye, which is how labels ended up spilling outside their boxes. Here the
+        box is measured from the text it contains, and `validate` re-checks it.
+        """
+        body = label
+        if title:
+            tw, th = self.measure(title, title_size)
+            bw, bh = self.measure(body, size)
+            h = max(min_h, th + bh + pad * 2 + 8)
+            self.box(eid, x, y, w, h, bg, stroke, sw=sw)
+            self.text(eid + "_ti", x + pad, y + pad, title, title_size, title_color or stroke)
+            self.text(eid + "_bo", x + pad, y + pad + th + 8, body, size)
+            return self.byid(eid)
+        bw, bh = self.measure(body, size)
+        h = max(min_h, bh + pad * 2)
+        return self.box(eid, x, y, w, h, bg, stroke, body, size, sw=sw, align="left")
+
+    def byid(self, eid: str) -> dict:
+        return next(e for e in self.elements if e["id"] == eid)
+
+    def vline(self, eid, x, y0, y1, color="#bbbbbb", style="dashed") -> dict:
+        e = self._base(eid, "line", x, y0, 0, y1 - y0, stroke=color, style=style, stroke_width=2)
+        e.update({"points": [[0, 0], [0, y1 - y0]], "lastCommittedPoint": None,
+                  "startBinding": None, "endBinding": None,
+                  "startArrowhead": None, "endArrowhead": None, "roundness": None})
+        self.elements.append(e)
+        return e
+
+    # ---------------------------------------------------------------- validation
+
+    def validate(self, zones: set[str] = frozenset()) -> None:
+        """Assert the things a human would otherwise have to spot by eye.
+
+        Exists because the first version of this flowchart was written blind, and the reviewer had
+        to point out that text was spilling and the officer column had no arrows. These are the
+        checks that would have caught it.
+        """
+        rects = [e for e in self.elements if e["type"] == "rectangle" and e["id"] not in zones]
+        problems: list[str] = []
+
+        # 1. Every bound label fits inside its container.
+        for t in self.elements:
+            if t["type"] != "text" or t["containerId"] is None:
+                continue
+            box = self.byid(t["containerId"])
+            if t["width"] > box["width"] - 16:
+                problems.append(f"label of {box['id']} is {t['width']:.0f}px wide in a {box['width']:.0f}px box")
+            if t["height"] > box["height"] - 4:
+                problems.append(f"label of {box['id']} is {t['height']:.0f}px tall in a {box['height']:.0f}px box")
+
+        # 2. Free text placed inside a fitbox stays inside it.
+        for t in self.elements:
+            if t["type"] != "text" or t["containerId"] is not None:
+                continue
+            host = t["id"].rsplit("_", 1)[0]
+            if not (t["id"].endswith("_ti") or t["id"].endswith("_bo")):
+                continue
+            try:
+                box = self.byid(host)
+            except StopIteration:
+                continue
+            if t["x"] + t["width"] > box["x"] + box["width"] - 6:
+                problems.append(f"{t['id']} overflows {host} horizontally by "
+                                f"{t['x'] + t['width'] - box['x'] - box['width'] + 6:.0f}px")
+            if t["y"] + t["height"] > box["y"] + box["height"] - 4:
+                problems.append(f"{t['id']} overflows {host} vertically by "
+                                f"{t['y'] + t['height'] - box['y'] - box['height'] + 4:.0f}px")
+
+        # 3. No two non-zone boxes overlap.
+        for i, a in enumerate(rects):
+            for b in rects[i + 1:]:
+                if (a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"]
+                        and a["y"] < b["y"] + b["height"] and b["y"] < a["y"] + a["height"]):
+                    problems.append(f"{a['id']} overlaps {b['id']}")
+
+        if problems:
+            raise SystemExit("LAYOUT PROBLEMS:\n  - " + "\n  - ".join(problems))
+        print(f"  layout ok: {len(rects)} boxes, no overlaps, no overflow")
+
     # ---------------------------------------------------------------- output
 
     def save(self, path: Path) -> None:
