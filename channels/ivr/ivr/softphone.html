@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IVR Softphone</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1b; --muted:#6b6a66; --line:#dddbd5;
+          --accent:#1f6f5c; --accent-ink:#fff; --warn:#a33b2b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161615; --card:#1f1f1d; --ink:#ecebe7; --muted:#a3a19b; --line:#34332f;
+            --accent:#3fa58a; --accent-ink:#0d1a16; --warn:#e2735f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 420px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin: 0 0 4px; }
+  input[type=text] { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+         background:var(--bg); color:var(--ink); font:inherit; }
+  .row { display:flex; gap:8px; margin-top:12px; }
+  button { font:inherit; border-radius:10px; border:1px solid var(--line); background:var(--bg);
+           color:var(--ink); padding:12px; cursor:pointer; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); flex:1; }
+  button.danger { color:var(--warn); flex:1; }
+  button:disabled { opacity:.45; cursor:default; }
+  .keys { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:16px; }
+  .keys button { font-size:20px; padding:14px 0; }
+  .status { display:flex; align-items:center; gap:8px; margin-top:16px; font-size:14px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--line); flex:none; }
+  .dot.live { background:var(--accent); }
+  .dot.talk { background:var(--warn); }
+  .opt { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:14px; }
+  pre { margin:16px 0 0; max-height:220px; overflow:auto; font-size:12px; color:var(--muted);
+        white-space:pre-wrap; word-break:break-word; }
+</style>
+</head>
+<body>
+<main>
+  <h1>IVR Softphone</h1>
+  <p class="sub">Talks to this adapter exactly like Exotel does. Local testing only.</p>
+  <div class="card">
+    <label for="caller">Caller number (same number = resume path)</label>
+    <input id="caller" type="text" value="+919812345678" autocomplete="off">
+    <div class="opt">
+      <input id="headphones" type="checkbox">
+      <label for="headphones" style="margin:0">I'm on headphones (lets me talk over prompts)</label>
+    </div>
+    <div class="row">
+      <button id="call" class="primary">Call</button>
+      <button id="hang" class="danger" disabled>Hang up</button>
+    </div>
+    <div class="keys" id="keys" aria-label="Keypad"></div>
+    <div class="status" aria-live="polite"><span class="dot" id="dot"></span><span id="state">Idle</span></div>
+    <pre id="log"></pre>
+  </div>
+</main>
+<script>
+// Exotel Voicebot protocol, browser side: 8 kHz 16-bit mono, 20 ms frames, JSON over WebSocket.
+const RATE = 8000, FRAME = 160;
+const $ = id => document.getElementById(id);
+let ws, ctx, micNode, micStream, playHead = 0, sources = [], sid, frameNo = 0, pending = [];
+
+function log(msg) { const l = $("log"); l.textContent = msg + "\n" + l.textContent.slice(0, 4000); }
+function setState(text, cls) { $("state").textContent = text; $("dot").className = "dot " + (cls || ""); }
+function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+function b64(int16) {
+  let s = ""; const b = new Uint8Array(int16.buffer);
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s);
+}
+function unb64(str) {
+  const s = atob(str), b = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return new Int16Array(b.buffer);
+}
+
+// Mic: an AudioWorklet hands us float blocks at the device rate; we box-filter down to 8 kHz.
+const worklet = `
+class Tap extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+}
+registerProcessor("tap", Tap);`;
+
+function downsampler(inRate) {
+  const step = inRate / RATE; let acc = 0, n = 0, pos = 0, out = [];
+  return block => {
+    for (const v of block) {
+      acc += v; n++; pos++;
+      if (pos >= step) { out.push(Math.max(-1, Math.min(1, acc / n))); acc = 0; n = 0; pos -= step; }
+    }
+    const frames = [];
+    while (out.length >= FRAME) {
+      const f = new Int16Array(FRAME);
+      for (let i = 0; i < FRAME; i++) f[i] = out[i] * 32767;
+      frames.push(f); out = out.slice(FRAME);
+    }
+    return frames;
+  };
+}
+
+function isPlaying() { return ctx && playHead > ctx.currentTime + 0.02; }
+
+function play(int16) {
+  const buf = ctx.createBuffer(1, int16.length, RATE), ch = buf.getChannelData(0);
+  for (let i = 0; i < int16.length; i++) ch[i] = int16[i] / 32768;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+  playHead = Math.max(playHead, ctx.currentTime + 0.05);
+  src.start(playHead); playHead += buf.duration;
+  sources.push(src); src.onended = () => { sources = sources.filter(s => s !== src); };
+  setState("Assistant speaking", "talk");
+}
+
+function clearPlayback() {
+  sources.forEach(s => { try { s.stop(); } catch (e) {} });
+  sources = []; playHead = 0; pending.forEach(clearTimeout); pending = [];
+  log("« clear (barge-in)");
+}
+
+async function call() {
+  ctx = new AudioContext();
+  micStream = await navigator.mediaDevices.getUserMedia(
+    { audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: "text/javascript" })));
+  micNode = new AudioWorkletNode(ctx, "tap");
+  ctx.createMediaStreamSource(micStream).connect(micNode);
+  const down = downsampler(ctx.sampleRate);
+
+  sid = "soft-" + Math.random().toString(36).slice(2, 10);
+  ws = new WebSocket(location.origin.replace(/^http/, "ws") + "/stream");
+  ws.onopen = () => {
+    send({ event: "connected", protocol: "Call", version: "1.0.0" });
+    send({ event: "start", stream_sid: sid, start: { stream_sid: sid,
+      call_sid: "soft-call-" + Date.now(), account_sid: "softphone", from: $("caller").value.trim(),
+      to: "+910000000000", media_format: { encoding: "audio/x-l16", sample_rate: RATE, channels: 1 } } });
+    setState("Connected", "live"); log("» start");
+    $("call").disabled = true; $("hang").disabled = false;
+  };
+  micNode.port.onmessage = e => {
+    for (const f of down(e.data)) {
+      // No headphones: send silence while a prompt plays, or the speaker's own sound interrupts it.
+      const out = (!$("headphones").checked && isPlaying()) ? new Int16Array(FRAME) : f;
+      send({ event: "media", stream_sid: sid, media: { chunk: String(frameNo), timestamp: String(frameNo * 20),
+             payload: b64(out) } });
+      frameNo++;
+    }
+  };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.event === "media") play(unb64(m.media.payload));
+    else if (m.event === "clear") clearPlayback();
+    else if (m.event === "mark") {
+      // Echo the mark once everything queued before it has actually played, like Exotel.
+      const wait = Math.max(0, (playHead - ctx.currentTime) * 1000);
+      pending.push(setTimeout(() => { send({ event: "mark", stream_sid: sid, mark: m.mark });
+                                         setState("Listening", "live"); }, wait));
+    }
+  };
+  ws.onclose = () => { log("× call ended"); teardown(); };
+}
+
+function hangup() {
+  send({ event: "stop", stream_sid: sid, stop: { reason: "callended" } });
+  if (ws) ws.close();
+}
+
+function teardown() {
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  ws = null; ctx = null; frameNo = 0;
+  setState("Idle"); $("call").disabled = false; $("hang").disabled = true;
+}
+
+for (const k of ["1","2","3","4","5","6","7","8","9","*","0","#"]) {
+  const b = document.createElement("button"); b.textContent = k; b.setAttribute("aria-label", "Key " + k);
+  b.onclick = () => { if (ws) { send({ event: "dtmf", stream_sid: sid, dtmf: { digit: k } }); log("» key " + k); } };
+  $("keys").appendChild(b);
+}
+$("call").onclick = () => call().catch(e => { log("error: " + e.message); teardown(); });
+$("hang").onclick = hangup;
+</script>
+</body>
+</html>

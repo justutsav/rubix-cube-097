@@ -22,6 +22,19 @@ uv run --extra dev python tools/fake_exotel.py --dtmf 1
 
 Add `--barge-in` to the last one to have the caller talk over every prompt.
 
+## Talk to it yourself (browser softphone, no Exotel)
+
+Start `ai/` (see `ai/README.md`, with `ASR_PROVIDER=vosk` for speech), then:
+
+```bash
+SOFTPHONE=1 uv run uvicorn ivr.server:app --port 8000
+```
+
+Open http://localhost:8000/softphone, press **Call**, allow the microphone, and answer
+out loud or on the on-screen keypad. It speaks the same protocol as Exotel, so this is
+the real adapter path. Without headphones the page mutes your mic while a prompt plays
+(otherwise the speaker would interrupt itself); tick "headphones" to test talking over prompts.
+
 ## Tests
 
 ```bash

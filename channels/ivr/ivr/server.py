@@ -8,8 +8,10 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 
 from . import engine, exotel, prompts
 from .call import Call
@@ -20,6 +22,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 app = FastAPI(title="IVR adapter")
 BANK = prompts.load()          # fail at startup, not mid-call, if prompts are missing
 log.info("loaded %d prompts", len(BANK))
+
+
+@app.get("/softphone")
+def softphone():
+    """Browser phone that speaks the Exotel protocol, for testing with a real voice.
+    Off unless SOFTPHONE=1: it is a test tool, not something to expose."""
+    if os.environ.get("SOFTPHONE") != "1":
+        raise HTTPException(404)
+    return FileResponse(Path(__file__).with_name("softphone.html"))
 
 
 @app.get("/health")
