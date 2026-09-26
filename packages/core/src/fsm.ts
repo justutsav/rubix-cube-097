@@ -585,11 +585,21 @@ export async function turn(session: SessionState, req: TurnRequest, deps: TurnDe
         const label = [place.villageName, place.blockName].filter(Boolean).join(', ');
         return finish([prompt('q0.confirm.v1', s, { value: label })], enumExpect(YES_NO));
       }
-      if (typed) {
-        // No LGD resolver wired (offline kiosk, or the block list is not loaded). Keep the name
-        // as stated, flag lgd as null, and never fabricate a code.
-        s = { ...s, registration: { ...s.registration, villageName: typed }, phase: 'CONFIRM' };
-        return finish([prompt('q0.confirm.v1', s, { value: typed })], enumExpect(YES_NO));
+      // Take the name as stated, whether it was typed or spoken.
+      //
+      // This used to accept typed input only, so a village that was not one of the handful in the
+      // pilot block list was never read back at all — the spoken path fell straight through to
+      // re-ask, re-ask, DEFER, and the caller never saw the yes/no. It looked like the confirmation
+      // was broken; in fact Q0 was never offering it. Most of India's 6 lakh villages are not in
+      // any list we ship, so "not recognised" has to be the normal case, not the failure case.
+      //
+      // The LGD codes stay null, which is the honest state: decisions.md forbids fabricating an
+      // identifier the source did not give us. A village name with a null code is a usable record;
+      // an invented code is a defect.
+      const spoken = typed ?? hyps[0]?.trim() ?? null;
+      if (spoken) {
+        s = { ...s, registration: { ...s.registration, villageName: spoken }, phase: 'CONFIRM' };
+        return finish([prompt('q0.confirm.v1', s, { value: spoken })], enumExpect(YES_NO));
       }
       if (s.reAskCount >= 2) {
         s = { ...s, state: 'CONSENT', phase: 'LISTEN', reAskCount: 0 };

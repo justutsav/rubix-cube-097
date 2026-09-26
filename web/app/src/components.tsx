@@ -10,10 +10,21 @@
  *   · `<StatusChip>` always carries an icon and a word. Status is never colour alone.
  */
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { ExpectOption, Locale } from '@rc097/core';
 import { speak, ttsAvailable } from './lib/speech';
+import { TABS, type Role } from './lib/role';
+
+/**
+ * The active role, so navigation can differ by audience.
+ *
+ * It is a context rather than a prop because every shell needs it and threading it through six
+ * pages is how a "temporary" default ends up hard-coded. Default `beneficiary`: if the role is
+ * somehow unset, the safest thing to render is the surface that shows nobody else's data.
+ */
+export const RoleContext = createContext<Role>('beneficiary');
+export const useRole = (): Role => useContext(RoleContext);
 
 // ---------------------------------------------------------------------------- Speak
 
@@ -50,10 +61,13 @@ export function Speak({
       )}
       <div lang={locale} style={{ flex: 1 }}>
         {text}
-        {!promptId && (
+        {/* Dev-only lint marker. A beneficiary-facing string with no prompt id has no
+            pre-rendered audio twin and falls back to synthesis, which is a shortfall worth
+            seeing while building — and noise on a real user's screen. */}
+        {!promptId && import.meta.env.DEV && (
           <span
             className="mono"
-            title="No prompt id: this string has no audio twin, so it cannot be heard. Add it to prompts.ts."
+            title="No prompt id: this string has no audio twin. Add it to prompts.ts."
             style={{ opacity: 0.5, marginLeft: 6 }}
           >
             ⚠no-audio
@@ -269,15 +283,6 @@ export function PinPad({ onDone, length = 4, label }: { onDone: (pin: string) =>
 
 // ---------------------------------------------------------------------------- register B chrome
 
-const NAV = [
-  { to: '/', label: 'Interview', icon: '🎤' },
-  { to: '/chat', label: 'Ask', icon: '💬' },
-  { to: '/me', label: 'My plan', icon: '📄' },
-  { to: '/field', label: 'Call list', icon: '📋' },
-  { to: '/officer', label: 'District', icon: '🏛️' },
-  { to: '/settings', label: 'Settings', icon: '⚙️' },
-];
-
 export function AppShell({ title, subtitle, children, bands }: { title: string; subtitle?: string; children: ReactNode; bands?: ReactNode }) {
   return (
     <div className="b-shell">
@@ -295,6 +300,8 @@ export function AppShell({ title, subtitle, children, bands }: { title: string; 
 }
 
 export function TabBar() {
+  const role = useRole();
+  const tabs = TABS[role];
   return (
     <nav
       style={{
@@ -304,22 +311,19 @@ export function TabBar() {
         background: '#fff',
         borderTop: '1px solid var(--color-beige-200)',
         paddingBottom: 'env(safe-area-inset-bottom)',
-        overflowX: 'auto',
       }}
     >
-      {NAV.map((n) => (
+      {tabs.map((n) => (
         <NavLink
           key={n.to}
           to={n.to}
-          end={n.to === '/'}
           style={({ isActive }) => ({
-            flex: '1 0 auto',
-            minWidth: 72,
+            flex: 1,
             minHeight: 56,
             display: 'grid',
             placeItems: 'center',
             gap: 2,
-            padding: '6px 8px',
+            padding: '6px 4px',
             textDecoration: 'none',
             color: isActive ? 'var(--color-plum-700)' : 'var(--color-sand-700)',
             borderTop: isActive ? '3px solid var(--color-plum-700)' : '3px solid transparent',

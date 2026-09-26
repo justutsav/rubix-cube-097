@@ -8,10 +8,12 @@
  */
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ASR_BACKED_LOCALES, CORE_VERSION, LEXICON, SPOKEN_LOCALES, catalogueStats } from '@rc097/core';
 import { AppShell, Band, Card, Stat, StatusChip, useMemoAsync, useTick } from '../components';
 import { openStore } from '../lib/db';
 import { serverConfigured, signOut, supabase, syncOutbox } from '../lib/supabase';
+import { ROLES, setRole as persistRole, type Role } from '../lib/role';
 import { asrAvailable, ttsAvailable } from '../lib/speech';
 
 const ASR_PROVIDERS = [
@@ -22,7 +24,8 @@ const ASR_PROVIDERS = [
   { id: 'vosk', label: 'Vosk on-device', note: '~50 MB per language, Apache-2.0, genuinely offline. The real answer for the kiosk channel; needs a small Capacitor plugin, which is the one remaining native piece.', live: false },
 ];
 
-export default function Settings() {
+export default function Settings({ role, onRole }: { role: Role | null; onRole: (r: Role) => void }) {
+  const nav = useNavigate();
   const tick = useTick(6000);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -60,6 +63,42 @@ export default function Settings() {
       bands={!serverConfigured ? <Band tone="warn">No server configured — this build is kiosk-only. Interviews are stored on the device and never leave it.</Band> : undefined}
     >
       <div className="b-main">
+        <Card title="Who is using this phone" wide>
+          <p className="muted" style={{ marginTop: 0 }}>
+            The three audiences get different navigation on purpose. A beneficiary's phone must not
+            be two taps from a console listing other people's answers.
+          </p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {ROLES.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="b-btn"
+                data-variant={role === r.id ? undefined : 'ghost'}
+                style={{ textAlign: 'left' }}
+                onClick={async () => {
+                  await persistRole(r.id);
+                  onRole(r.id);
+                  nav('/home');
+                }}
+              >
+                {r.icon} {r.label}
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Account">
+          <p className="muted" style={{ marginTop: 0 }}>
+            {state.phone
+              ? 'Signed in. An earlier IVR or WhatsApp conversation on this number will be picked up.'
+              : 'Not signed in. Everything works without an account; signing in is what links this app to an earlier phone or WhatsApp conversation.'}
+          </p>
+          <button type="button" className="b-btn" onClick={() => nav('/login')}>
+            {state.phone ? 'Manage sign-in' : 'Sign in with a phone number'}
+          </button>
+        </Card>
+
         <Card title="This device">
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <Stat value={state.bens} label="beneficiaries" />

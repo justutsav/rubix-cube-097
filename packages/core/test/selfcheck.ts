@@ -327,6 +327,21 @@ async function main() {
   });
 
   r = await t(r.session, { kind: 'text', value: 'Pindra' });
+  await ok('a SPOKEN village that is in no block list is still read back for confirmation', async () => {
+    // The failure this guards: most villages are not in any list we ship, so if only typed input
+    // reached CONFIRM, the spoken path dead-ended in re-ask/re-ask/DEFER and the caller never got
+    // a yes/no at all.
+    let x = startSession({ channel: 'app', now: deps.now, uuid: deps.uuid });
+    x = { ...x, state: 'Q0_VILLAGE_BLOCK', phase: 'LISTEN' };
+    const y = await t(x, { kind: 'audio', transcripts: ['रामपुर मझगवां'], asrEngine: 'test', asrVersion: '0' });
+    assert.equal(y.session.phase, 'CONFIRM', JSON.stringify(y.session.registration));
+    assert.equal(y.expect.kind, 'enum');
+    assert.equal(y.session.registration.villageName, 'रामपुर मझगवां');
+    assert.equal(y.session.registration.blockLgd, null, 'must not invent an LGD code');
+    const yes = await t(y.session, { kind: 'choice', optionId: 'yes' });
+    assert.equal(yes.session.state, 'CONSENT');
+  });
+
   r = await t(r.session, { kind: 'choice', optionId: 'yes' });
   await ok('consent is an FSM state, and declining ends the call politely', async () => {
     assert.equal(r.session.state, 'CONSENT');
