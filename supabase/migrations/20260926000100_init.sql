@@ -17,7 +17,7 @@ create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------- reference geography
 -- LGD codes are nullable because we will not invent them. Name-only rows are honest rows.
-create table district (
+create table if not exists district (
   id            uuid primary key default gen_random_uuid(),
   lgd_code      int unique,
   name          text not null,
@@ -27,7 +27,7 @@ create table district (
   unique (name, state_name)
 );
 
-create table block (
+create table if not exists block (
   id            uuid primary key default gen_random_uuid(),
   district_id   uuid not null references district(id) on delete cascade,
   lgd_code      int,
@@ -36,9 +36,12 @@ create table block (
 );
 
 -- ---------------------------------------------------------------- beneficiary
-create type consent_state as enum ('NONE','GIVEN','GUARDIAN_PENDING','GUARDIAN_GIVEN','WITHDRAWN');
+do $$ begin
+  create type consent_state as enum ('NONE','GIVEN','GUARDIAN_PENDING','GUARDIAN_GIVEN','WITHDRAWN');
+exception when duplicate_object then null;
+end $$;
 
-create table beneficiary (
+create table if not exists beneficiary (
   id              uuid primary key default gen_random_uuid(),
   -- hmac(e164, server_pepper). The raw number is never stored, anywhere, ever.
   phone_hash      bytea not null,
@@ -64,14 +67,20 @@ create table beneficiary (
 
 -- phone_hash is a NON-UNIQUE LOOKUP INDEX, never an identity. That distinction is the whole
 -- of BLOCKER 1; the index below is deliberately not unique.
-create index beneficiary_phone_hash_idx on beneficiary (phone_hash);
-create index beneficiary_district_idx on beneficiary (district_id);
+create index if not exists beneficiary_phone_hash_idx on beneficiary (phone_hash);
+create index if not exists beneficiary_district_idx on beneficiary (district_id);
 
 -- ---------------------------------------------------------------- session
-create type channel_kind as enum ('ivr','whatsapp','app');
-create type session_status as enum ('ACTIVE','RESUMABLE','COMPLETED','ABANDONED');
+do $$ begin
+  create type channel_kind as enum ('ivr','whatsapp','app');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type session_status as enum ('ACTIVE','RESUMABLE','COMPLETED','ABANDONED');
+exception when duplicate_object then null;
+end $$;
 
-create table session (
+create table if not exists session (
   id              uuid primary key default gen_random_uuid(),
   beneficiary_id  uuid not null references beneficiary(id) on delete cascade,
   channel         channel_kind not null,
@@ -88,13 +97,16 @@ create table session (
   last_turn_at    timestamptz not null default now()
 );
 
-create index session_beneficiary_idx on session (beneficiary_id, status);
-create index session_resumable_idx on session (beneficiary_id) where status = 'RESUMABLE';
+create index if not exists session_beneficiary_idx on session (beneficiary_id, status);
+create index if not exists session_resumable_idx on session (beneficiary_id) where status = 'RESUMABLE';
 
 -- ---------------------------------------------------------------- answers
-create type extract_method as enum ('DTMF','LEXICON','REGEX','LLM','OPERATOR','TAP');
+do $$ begin
+  create type extract_method as enum ('DTMF','LEXICON','REGEX','LLM','OPERATOR','TAP');
+exception when duplicate_object then null;
+end $$;
 
-create table answer (
+create table if not exists answer (
   beneficiary_id  uuid not null references beneficiary(id) on delete cascade,
   -- 1..7, the PS's order, verbatim. An evaluator will count these.
   field_no        smallint not null check (field_no between 1 and 7),
@@ -120,9 +132,12 @@ create table answer (
 );
 
 -- ---------------------------------------------------------------- consent
-create type consent_kind as enum ('SPOKEN_YES','DTMF_YES','GUARDIAN_YES','WITHDRAWN');
+do $$ begin
+  create type consent_kind as enum ('SPOKEN_YES','DTMF_YES','GUARDIAN_YES','WITHDRAWN');
+exception when duplicate_object then null;
+end $$;
 
-create table consent_event (
+create table if not exists consent_event (
   id              uuid primary key default gen_random_uuid(),
   beneficiary_id  uuid not null references beneficiary(id) on delete cascade,
   kind            consent_kind not null,
@@ -135,10 +150,10 @@ create table consent_event (
   captured_at     timestamptz not null default now()
 );
 
-create index consent_beneficiary_idx on consent_event (beneficiary_id, captured_at desc);
+create index if not exists consent_beneficiary_idx on consent_event (beneficiary_id, captured_at desc);
 
 -- ---------------------------------------------------------------- qualifications
-create table qualification (
+create table if not exists qualification (
   id              uuid primary key default gen_random_uuid(),
   local_id        text not null unique,
   -- NULL until the official NQR import has run. decisions.md: fields the source does not
@@ -167,11 +182,17 @@ create table qualification (
   unique (qp_code, title)
 );
 
-create index qualification_level_idx on qualification (level_numeric) where valid_till is null or valid_till >= current_date;
-create index qualification_concepts_idx on qualification using gin (concepts);
+-- NOT a partial index on `valid_till >= current_date`: that is what failed with 42P17. An index
+-- predicate must be IMMUTABLE, and current_date is only STABLE — which is Postgres protecting us,
+-- because such an index would quietly go stale as rows expired underneath it. valid_till is in the
+-- index instead, so "valid and at or below level N" is still a single index scan and the freshness
+-- test happens in the query where it belongs. 880 of the register's 2,814 rows are expired, so
+-- this filter runs on every recommendation.
+create index if not exists qualification_level_idx on qualification (level_numeric, valid_till);
+create index if not exists qualification_concepts_idx on qualification using gin (concepts);
 
 -- ---------------------------------------------------------------- opportunity data
-create table district_opportunity (
+create table if not exists district_opportunity (
   id            uuid primary key default gen_random_uuid(),
   district_id   uuid not null references district(id) on delete cascade,
   block_id      uuid references block(id) on delete set null,
@@ -189,10 +210,10 @@ create table district_opportunity (
   created_at    timestamptz not null default now()
 );
 
-create index opportunity_district_concept_idx on district_opportunity (district_id, concept_id);
+create index if not exists opportunity_district_concept_idx on district_opportunity (district_id, concept_id);
 
 -- ---------------------------------------------------------------- recommendations and outcomes
-create table recommendation (
+create table if not exists recommendation (
   id                  uuid primary key default gen_random_uuid(),
   beneficiary_id      uuid not null references beneficiary(id) on delete cascade,
   ranked              jsonb not null,
@@ -212,13 +233,16 @@ create table recommendation (
   delivered_at        timestamptz
 );
 
-create index recommendation_beneficiary_idx on recommendation (beneficiary_id, created_at desc);
+create index if not exists recommendation_beneficiary_idx on recommendation (beneficiary_id, created_at desc);
 
-create type outcome_status as enum ('RECOMMENDED','ENROLLED','CERTIFIED','PLACED','DROPPED');
+do $$ begin
+  create type outcome_status as enum ('RECOMMENDED','ENROLLED','CERTIFIED','PLACED','DROPPED');
+exception when duplicate_object then null;
+end $$;
 
 -- Basic Issue 3, and the guidelines' own 70% placement target which CAG measured at 41%.
 -- Updated from the mobiliser's call list, NOT from a new officer screen.
-create table outcome (
+create table if not exists outcome (
   id              uuid primary key default gen_random_uuid(),
   beneficiary_id  uuid not null references beneficiary(id) on delete cascade,
   qualification_id uuid references qualification(id) on delete set null,
@@ -235,7 +259,7 @@ create table outcome (
 -- The statutory artefact. The differentiator was never the screen — it is the format and the
 -- date: DL-PACC submits through the portal by the FIRST WEEK OF APRIL, projecting 3.5-4x the
 -- notional allocation (May 2023 revision, Ch.1 ¶6c.vi and Ch.3 ¶9).
-create table perspective_plan (
+create table if not exists perspective_plan (
   id                  uuid primary key default gen_random_uuid(),
   district_id         uuid not null references district(id) on delete cascade,
   fy_from             smallint not null,
@@ -250,7 +274,7 @@ create table perspective_plan (
   unique (district_id, fy_from, fy_to)
 );
 
-create table perspective_plan_line (
+create table if not exists perspective_plan_line (
   id                  uuid primary key default gen_random_uuid(),
   plan_id             uuid not null references perspective_plan(id) on delete cascade,
   concept_id          text not null,
@@ -264,10 +288,10 @@ create table perspective_plan_line (
   created_at          timestamptz not null default now()
 );
 
-create index plan_line_plan_idx on perspective_plan_line (plan_id);
+create index if not exists plan_line_plan_idx on perspective_plan_line (plan_id);
 
 -- ---------------------------------------------------------------- staff
-create table app_user (
+create table if not exists app_user (
   id            uuid primary key references auth.users(id) on delete cascade,
   role          text not null check (role in ('mobiliser','officer','admin')),
   full_name     text,
@@ -280,7 +304,7 @@ create table app_user (
 -- ---------------------------------------------------------------- turn telemetry
 -- The per-turn latency number that goes on a slide. Also the only way to know whether the
 -- lexicon really handles ~70% of turns, which is the whole latency argument.
-create table turn_telemetry (
+create table if not exists turn_telemetry (
   id            bigserial primary key,
   session_id    uuid references session(id) on delete cascade,
   channel       channel_kind not null,
@@ -295,7 +319,7 @@ create table turn_telemetry (
   created_at    timestamptz not null default now()
 );
 
-create index telemetry_created_idx on turn_telemetry (created_at desc);
+create index if not exists telemetry_created_idx on turn_telemetry (created_at desc);
 
 -- ---------------------------------------------------------------- RLS
 -- Beneficiaries never authenticate — they phone in. All beneficiary-facing writes go through
@@ -332,44 +356,61 @@ language sql stable as $$
 $$;
 
 -- Reference data is readable by any signed-in staff member.
+drop policy if exists ref_read_district on district;
 create policy ref_read_district on district for select to authenticated using (true);
+drop policy if exists ref_read_block on block;
 create policy ref_read_block on block for select to authenticated using (true);
+drop policy if exists ref_read_qual on qualification;
 create policy ref_read_qual on qualification for select to authenticated using (true);
+drop policy if exists ref_read_opp on district_opportunity;
 create policy ref_read_opp on district_opportunity for select to authenticated using (true);
 
+drop policy if exists me_read on app_user;
 create policy me_read on app_user for select to authenticated using (id = auth.uid());
 
 -- A mobiliser sees her own district only. An officer sees their district. Nobody sees the country.
+drop policy if exists ben_scope on beneficiary;
 create policy ben_scope on beneficiary for select to authenticated
   using (district_id = my_district() or is_officer() and district_id = my_district());
 
+drop policy if exists answer_scope on answer;
 create policy answer_scope on answer for select to authenticated
   using (exists (select 1 from beneficiary b where b.id = answer.beneficiary_id and b.district_id = my_district()));
 
+drop policy if exists session_scope on session;
 create policy session_scope on session for select to authenticated
   using (exists (select 1 from beneficiary b where b.id = session.beneficiary_id and b.district_id = my_district()));
 
+drop policy if exists consent_scope on consent_event;
 create policy consent_scope on consent_event for select to authenticated
   using (exists (select 1 from beneficiary b where b.id = consent_event.beneficiary_id and b.district_id = my_district()));
 
+drop policy if exists reco_scope on recommendation;
 create policy reco_scope on recommendation for select to authenticated
   using (exists (select 1 from beneficiary b where b.id = recommendation.beneficiary_id and b.district_id = my_district()));
 
 -- Outcome tracking is the mobiliser's job, so she can write it. Basic Issue 3.
+drop policy if exists outcome_scope on outcome;
 create policy outcome_scope on outcome for select to authenticated
   using (exists (select 1 from beneficiary b where b.id = outcome.beneficiary_id and b.district_id = my_district()));
+drop policy if exists outcome_write on outcome;
 create policy outcome_write on outcome for insert to authenticated
   with check (exists (select 1 from beneficiary b where b.id = outcome.beneficiary_id and b.district_id = my_district()));
 
+drop policy if exists plan_scope on perspective_plan;
 create policy plan_scope on perspective_plan for select to authenticated using (district_id = my_district());
+drop policy if exists plan_write on perspective_plan;
 create policy plan_write on perspective_plan for all to authenticated
   using (district_id = my_district() and is_officer()) with check (district_id = my_district() and is_officer());
+drop policy if exists plan_line_scope on perspective_plan_line;
 create policy plan_line_scope on perspective_plan_line for select to authenticated
   using (exists (select 1 from perspective_plan p where p.id = plan_id and p.district_id = my_district()));
+drop policy if exists plan_line_write on perspective_plan_line;
 create policy plan_line_write on perspective_plan_line for all to authenticated
   using (exists (select 1 from perspective_plan p where p.id = plan_id and p.district_id = my_district() and is_officer()))
   with check (exists (select 1 from perspective_plan p where p.id = plan_id and p.district_id = my_district() and is_officer()));
 
+drop policy if exists telemetry_read on turn_telemetry;
 create policy telemetry_read on turn_telemetry for select to authenticated using (is_officer());
 
 -- ---------------------------------------------------------------- aggregation for the officer

@@ -129,7 +129,12 @@ def _read_ts_array(path: Path, marker: str) -> str:
     """
     text = path.read_text()
     start = text.index(marker)
-    depth, i, out = 0, text.index("[", start), []
+    # Scan from after the `=`, not from the marker. `export const DISTRICTS: DistrictSeed[] = [`
+    # contains a `[` inside the TYPE ANNOTATION, and locking on to that one returns the empty
+    # array `[]`. That is exactly how districts and blocks seeded as zero while reporting success,
+    # which then left every district_opportunity row with a null foreign key.
+    eq = text.index("=", start)
+    depth, i, out = 0, text.index("[", eq), []
     while i < len(text):
         c = text[i]
         out.append(c)
@@ -151,28 +156,32 @@ def cmd_seed() -> None:
 
     # --- districts and blocks
     dist_src = _read_ts_array(core / "districts.ts", "export const DISTRICTS")
-    districts = re.findall(
-        r"name:\s*'([^']+)',\s*\n\s*stateName:\s*'([^']+)',\s*\n\s*lgdCode:\s*(null|\d+),\s*\n\s*isPilot:\s*(true|false)",
-        dist_src,
-    )
-    blocks_by_district: dict[str, list[str]] = {}
-    for chunk in dist_src.split("name: '")[1:]:
-        dname = chunk.split("'")[0]
-        blocks_by_district[dname] = re.findall(r"\{\s*name:\s*'([^']+)',\s*lgdCode:", chunk)
 
-    rows = []
-    for name, state, lgd, pilot in districts:
-        rows.append(f"({_esc(name)}, {_esc(state)}, {lgd}, {pilot})")
-    if rows:
-        run_sql(
-            "insert into district (name, state_name, lgd_code, is_pilot) values "
-            + ", ".join(rows)
-            + " on conflict (name, state_name) do nothing"
-        )
-        print(f"  districts: {len(rows)}")
+    # One regex per district object, capturing that district's nested blocks array along with it.
+    # Splitting the file on "name: '" does not work, because block entries carry a `name` too: each
+    # district's chunk ended at its own first block and every block list came back empty.
+    district_re = re.compile(
+        r"name:\s*'([^']+)',\s*\n\s*stateName:\s*'([^']+)',\s*\n\s*lgdCode:\s*(null|\d+),"
+        r"\s*\n\s*isPilot:\s*(true|false).*?blocks:\s*\[(.*?)\n\s*\]",
+        re.S,
+    )
+    found = district_re.findall(dist_src)
+    if not found:
+        # Loud, not silent. A seed that reports success while inserting nothing is worse than one
+        # that stops — the failure only surfaced three commands later as a null FK.
+        raise SystemExit("could not parse DISTRICTS from packages/core/src/data/districts.ts")
+
+    rows = [f"({_esc(n)}, {_esc(s)}, {lgd}, {pilot})" for n, s, lgd, pilot, _ in found]
+    run_sql(
+        "insert into district (name, state_name, lgd_code, is_pilot) values "
+        + ", ".join(rows)
+        + " on conflict (name, state_name) do nothing"
+    )
+    print(f"  districts: {len(rows)}")
 
     nblocks = 0
-    for dname, blocks in blocks_by_district.items():
+    for dname, _state, _lgd, _pilot, blocks_src in found:
+        blocks = re.findall(r"name:\s*'([^']+)'", blocks_src)
         if not blocks:
             continue
         vals = ", ".join(
@@ -232,11 +241,21 @@ def cmd_seed() -> None:
                 f"((select id from district where name = {_esc(dname)} limit 1), {bsel}, {_esc(concept)}, "
                 f"{_esc(kind)}, {_esc(title)}, null, {_esc(src)}, {date})"
             )
+        # Clearing first makes a re-run idempotent without inventing a unique constraint over a
+        # free-text title. Every row in this table is seed data.
+        run_sql("delete from district_opportunity")
+        # `where district_id is not null` rather than letting one unmatched district abort the
+        # batch. A row we cannot place is dropped and counted, never given a guessed district —
+        # the whole point of this table is that each row is traceable to a real place.
         run_sql(
             "insert into district_opportunity (district_id, block_id, concept_id, kind, title, detail, source, source_date) "
-            "values " + ", ".join(vals)
+            "select * from (values " + ", ".join(vals) + ") "
+            "as v(district_id, block_id, concept_id, kind, title, detail, source, source_date) "
+            "where v.district_id is not null"
         )
-        print(f"  opportunities: {len(vals)}")
+        placed = run_sql("select count(*) as n from district_opportunity")[0]["n"]
+        print(f"  opportunities: {placed} of {len(opps)}"
+              + ("" if placed == len(opps) else "  (unplaceable rows skipped, not faked)"))
 
     print("\nSeed complete.")
 
