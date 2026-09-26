@@ -80,17 +80,17 @@ ENGINE_URL=http://localhost:8001
 ENGINE_TIMEOUT_MS=4000   # > engine worst case (Sarvam 2 s + Vosk fallback); was 1500, ended calls
 TTS_TIMEOUT_MS=6000
 # Listening — tuned on real Exotel calls (05-measurements.md)
-VAD_AGGRESSIVENESS=2
-ENDPOINT_SILENCE_MS=800  # 240 cut callers mid-sentence when they paused to think
+VAD_AGGRESSIVENESS=3     # 2 took background noise for speech on real calls
+ENDPOINT_SILENCE_MS=500  # 240 cut mid-sentence; 800 waited too long on noisy lines
 MIN_UTTERANCE_MS=250
-MAX_UTTERANCE_MS=15000
+MAX_UTTERANCE_MS=6000
 BARGE_IN_SPEECH_MS=900   # 120 cut every prompt on line noise; 400 still cut questions on "हाँ जी"
 BARGE_IN_GRACE_MS=4000   # no barge-in at call start: Exotel's "this call is being recorded"
 BARGE_IN_ECHO_RATIO=2.5  # speakerphone: interrupt only if 2.5x louder than our own echo (300 ms average)
 BARGE_IN_MIN_RMS=300
 ECHO_LEARN_MS=300        # first 300 ms of each prompt only measure the echo level
 POST_PROMPT_GUARD_MS=250 # ignore the echo tail right after a prompt ends
-NO_INPUT_TIMEOUT_MS=8000
+NO_INPUT_TIMEOUT_MS=6000
 FILLER_AFTER_MS=1000     # "hmm" only after 1 s; Sarvam often takes 0.7-0.8 s
 MAX_CALL_SECONDS=600
 # Callback (Exotel calls the user)

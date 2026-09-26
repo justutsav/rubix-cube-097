@@ -12,6 +12,7 @@ from .districts import load as districts
 from .extract import lexicon
 
 BASE_HI = {
+    "q0_again": "अपने ज़िले का नाम बताइए, जैसे, गया, बिहार।",
     "ack_got_it": "जी, समझ गई।",
     "ack_thanks": "धन्यवाद।",
     "ack_good": "अच्छा।",

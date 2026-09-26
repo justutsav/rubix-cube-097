@@ -379,6 +379,14 @@ class Flow:
 
     def _menu(self, prefix=()):
         st = self.state
+        if st["field"] == "q0":
+            # no "1 for Gaya…" list: any place in India is allowed, so ask in words once more
+            if st.get("mode") == "menu":
+                return self._defer()
+            st["mode"] = "menu"
+            self.say += ["q0_again"]
+            self.expect = {"kind": "free", "timeout_ms": TIMEOUT_MS}
+            return
         st["mode"] = "menu"
         self.say += [*prefix, f"{st['field']}_menu"]
         self.expect = {"kind": "enum", "dtmf_map": _field(st["field"])["dtmf"], "timeout_ms": TIMEOUT_MS}

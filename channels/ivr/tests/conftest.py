@@ -95,6 +95,7 @@ def _no_local_env(monkeypatch):
     monkeypatch.setenv("ECHO_LEARN_MS", "0")          # speakerphone tests turn echo measuring back on
     monkeypatch.setenv("POST_PROMPT_GUARD_MS", "0")   # ...and the post-prompt echo guard
     monkeypatch.setenv("ENDPOINT_SILENCE_MS", "240")  # fixtures end answers with ~0.4 s of silence
+    monkeypatch.setenv("VAD_AGGRESSIVENESS", "2")     # VAD tests pin the level they were written for
 
 
 @pytest.fixture

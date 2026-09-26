@@ -41,8 +41,9 @@ def test_keypad_only_when_there_is_no_speech_to_text(caller):
     c = caller
     consent(c)
     j = c.turn("audio", data="AAAA")
-    assert c.ids(j) == ["q0_menu"]
-    for digit in ["1", "3", "1", "5", "1", "4", "2", "1", "3"]:     # q0 q1 q2 years q3 q4 q5 q6 q7
+    assert c.ids(j) == ["q0_again"]                                   # district: words only, no list
+    c.key("1")                                                        # keys still work if pressed
+    for digit in ["3", "1", "5", "1", "4", "2", "1", "3"]:           # q1 q2 years q3 q4 q5 q6 q7
         j = c.key(digit)
         assert "you_said" not in c.ids(j)                             # keys are exact: no read-back
     assert j["state"] == "READBACK"
@@ -53,9 +54,8 @@ def test_misheard_twice_then_menu_then_deferred(caller):
     c = caller
     consent(c)
     assert c.ids(c.say("कुछ भी नहीं समझ")) == ["reask", "q0"]
-    assert c.ids(c.say("ऐसे ही"))[-1] == "q0_menu"
-    c.say("पता नहीं")
-    j = c.say("कुछ नहीं")
+    assert c.ids(c.say("ऐसे ही"))[-1] == "q0_again"                   # no keypad list for places
+    j = c.say("पता नहीं")
     assert c.ids(j)[:2] == ["deferred", "q1"]                          # skipped, never a dead end
 
 
@@ -229,11 +229,13 @@ def test_echo_of_the_consent_question_is_ignored(caller):
 def test_menu_number_said_aloud_counts_as_the_key(caller):
     c = caller
     consent(c)
+    c.key("1")                                                       # q0 by key
     c.say("कुछ भी नहीं समझ")
-    assert c.ids(c.say("ऐसे ही"))[-1] == "q0_menu"
-    assert c.ids(c.say("नौ।"))[:2] == ["ack", "q1"]              # 9 = other district
-    b = STORE.q("select district from beneficiary where phone_hash=?", c.phone).fetchone()
-    assert b[0] == "OTHER"
+    assert c.ids(c.say("ऐसे ही"))[-1] == "q1_menu"
+    ids = c.ids(c.say("तीन।"))                                       # "3" said aloud = up to 8th
+    assert ids[0] in flow.ACKS and ids[-1] == "q2"
+    b = STORE.q("select id from beneficiary where phone_hash=?", c.phone).fetchone()
+    assert STORE.answers(b[0])["q1"]["value"] == {"class": 8}
 
 
 def test_warm_replies_and_progress_cues(caller):
