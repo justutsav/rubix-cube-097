@@ -12,6 +12,7 @@
 
 import { createContext, useContext, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { ClipboardList, House, Landmark, Map, Settings } from 'lucide-react';
 import type { ExpectOption, Locale } from '@rc097/core';
 import { speak, ttsAvailable } from './lib/speech';
 import { TABS, type Role } from './lib/role';
@@ -303,11 +304,13 @@ export function TabBar() {
   const role = useRole();
   const tabs = TABS[role];
   return (
+    // `display` lives in the stylesheet, not here: the admin shell hides this bar at desk width,
+    // and an inline `display: flex` would outrank any rule that tried to.
     <nav
+      className="tabbar"
       style={{
         position: 'sticky',
         bottom: 0,
-        display: 'flex',
         background: '#fff',
         borderTop: '1px solid var(--color-beige-200)',
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -339,9 +342,215 @@ export function TabBar() {
   );
 }
 
-export function Card({ title, children, wide, action }: { title: string; children: ReactNode; wide?: boolean; action?: ReactNode }) {
+/**
+ * The officer console's desktop chrome.
+ *
+ * Register B was drawn for a tablet and then shown on a Collector's 1080p monitor, where it read
+ * as a stretched phone: a wrapped strip of pill buttons, two columns of cards in the middle third,
+ * and a 56px thumb-zone tab bar pinned to the bottom of a screen nobody touches. The density the
+ * design system promised the officer was never actually delivered at desk width.
+ *
+ * So the same content gets a second chrome above 64rem — persistent left rail, one top bar, a
+ * 12-column content grid — and keeps the phone chrome below it. Both are rendered; CSS picks.
+ * There is no second copy of the console and no desktop-only route.
+ */
+/**
+ * The rail's own icons. `role.ts` stores a tab's icon as an emoji because the beneficiary's tab bar
+ * is drawn for someone who cannot read the label under it — a picture is the label. The officer
+ * rail is read by someone who can, where a colour emoji next to 13px type just looks unfinished,
+ * so the desk chrome swaps in a line icon by route and leaves the phone bar alone.
+ */
+const RAIL_ICON: Record<string, ReactNode> = {
+  '/home': <House size={17} />,
+  '/officer': <Landmark size={17} />,
+  '/outcomes': <ClipboardList size={17} />,
+  '/state': <Map size={17} />,
+  '/settings': <Settings size={17} />,
+};
+
+export function AdminShell({
+  brand,
+  district,
+  tabs,
+  tab,
+  onTab,
+  meta,
+  actions,
+  bands,
+  children,
+}: {
+  brand: string;
+  district: string;
+  tabs: { id: string; label: string; icon: ReactNode; hint?: string }[];
+  tab: string;
+  onTab: (id: string) => void;
+  meta?: ReactNode;
+  actions?: ReactNode;
+  bands?: ReactNode;
+  children: ReactNode;
+}) {
+  const role = useRole();
+  const active = tabs.find((t) => t.id === tab);
   return (
-    <section className={`b-card ${wide ? 'b-wide' : ''}`}>
+    <div className="b-shell adm">
+      <aside className="adm-side">
+        <div className="adm-brand">
+          <span className="adm-mark" aria-hidden>◆</span>
+          <span>
+            <strong>{brand}</strong>
+            <span className="adm-brand-sub">PM-AJAY · GIA</span>
+          </span>
+        </div>
+
+        <div className="adm-district">
+          <span className="adm-district-label">District</span>
+          <strong>{district}</strong>
+        </div>
+
+        <nav className="adm-nav" aria-label="Console sections">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="adm-nav-item"
+              data-active={t.id === tab ? 'true' : undefined}
+              onClick={() => onTab(t.id)}
+            >
+              <span className="adm-nav-icon" aria-hidden>{t.icon}</span>
+              <span>
+                <span className="adm-nav-label">{t.label}</span>
+                {t.hint && <span className="adm-nav-hint">{t.hint}</span>}
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="adm-side-foot">
+          {/* The rail replaces the bottom tab bar on desktop, so the role's other screens have to
+              remain reachable from it — otherwise the desktop chrome quietly loses navigation. */}
+          <span className="adm-district-label">Elsewhere</span>
+          {TABS[role]
+            .filter((n) => n.to !== '/officer')
+            .map((n) => (
+              <NavLink key={n.to} to={n.to} className="adm-nav-item" data-quiet="true">
+                <span className="adm-nav-icon" aria-hidden>{RAIL_ICON[n.to] ?? n.icon}</span>
+                <span className="adm-nav-label">{n.label}</span>
+              </NavLink>
+            ))}
+        </div>
+      </aside>
+
+      <div className="adm-body">
+        <header className="adm-top">
+          <div>
+            <h1>{active?.label ?? brand}</h1>
+            <p className="adm-top-sub">{district} · DL-PACC</p>
+          </div>
+          <div className="adm-top-right">
+            {meta}
+            {actions}
+          </div>
+        </header>
+        {bands}
+        {children}
+      </div>
+
+      {/* Phone chrome. Hidden at desk width, where the rail is doing this job. */}
+      <TabBar />
+    </div>
+  );
+}
+
+/** Tab strip for the phone width of the admin shell. The rail replaces it above 64rem. */
+export function AdminTabs({
+  tabs,
+  tab,
+  onTab,
+}: {
+  tabs: { id: string; label: string }[];
+  tab: string;
+  onTab: (id: string) => void;
+}) {
+  return (
+    <div className="officer-tabs">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          className="b-btn"
+          data-variant={tab === t.id ? undefined : 'ghost'}
+          onClick={() => onTab(t.id)}
+          style={{ whiteSpace: 'nowrap' }}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A headline number with its own tile.
+ *
+ * `note` is not decoration: every number on this console is judged against a figure from the
+ * guidelines or the CAG report, and a bare "40%" beside a tile that does not say "against 70%
+ * mandated" is the kind of dashboard this project exists to replace.
+ */
+export function Kpi({
+  value,
+  label,
+  note,
+  tone,
+  icon,
+}: {
+  value: ReactNode;
+  label: string;
+  note?: string;
+  tone?: 'warn' | 'ok' | 'bad';
+  icon?: ReactNode;
+}) {
+  return (
+    <div className="kpi" data-tone={tone}>
+      <div className="kpi-head">
+        <span className="kpi-label">{label}</span>
+        {icon && <span className="kpi-icon" aria-hidden>{icon}</span>}
+      </div>
+      <div className="kpi-value">{value}</div>
+      {note && <div className="kpi-note">{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * The register as a funnel, because the scheme's failure is a funnel: CAG measured 41% placement
+ * against a mandated 70%, and a stack of four equal counts hides exactly where the drop happens.
+ */
+export function Funnel({ steps }: { steps: { label: string; value: number; tone?: Tone }[] }) {
+  const max = Math.max(1, ...steps.map((s) => s.value));
+  const colourOf = (t?: Tone) =>
+    t === 'near' ? 'var(--color-amber-500)' : t === 'out' ? 'var(--color-rose-600)' : t === 'eligible' ? 'var(--color-teal-600)' : 'var(--color-plum-600)';
+  return (
+    <div className="funnel">
+      {steps.map((s, i) => (
+        <div key={s.label} className="funnel-step">
+          <div className="funnel-bar" style={{ height: `${Math.max(8, (s.value / max) * 100)}%`, background: colourOf(s.tone) }}>
+            <span>{s.value}</span>
+          </div>
+          <span className="funnel-label">{s.label}</span>
+          {/* Rendered even for the first step, and empty: the rows are a grid, so a step with one
+              fewer child sits at a different height and the bars stop sharing a baseline. */}
+          <span className="funnel-drop">
+            {i === 0 ? '\u00a0' : steps[i - 1].value === 0 ? '—' : `${Math.round((s.value / steps[i - 1].value) * 100)}%`}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Card({ title, children, wide, action, span }: { title: string; children: ReactNode; wide?: boolean; action?: ReactNode; span?: 3 | 4 | 5 | 6 | 8 | 9 | 12 }) {
+  return (
+    <section className={`b-card ${wide ? 'b-wide' : ''}`} data-span={span}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <h2>{title}</h2>
         {action}
@@ -387,8 +596,10 @@ export function BarChart({
     <div style={{ display: 'grid', gap: 6 }}>
       {rows.length === 0 && <div className="muted">No data yet — run an interview.</div>}
       {rows.map((r) => (
-        <div key={r.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(7rem, 12rem) 1fr auto', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 'var(--text-label)' }}>{r.label}</span>
+        // The label track may shrink; the bar track may not. A fixed 12rem label in a one-third
+        // card left the bar 30px wide, which turned a chart into a row of full-looking stubs.
+        <div key={r.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 12rem) minmax(4.5rem, 1fr) auto', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 'var(--text-label)', overflowWrap: 'anywhere' }}>{r.label}</span>
           <div style={{ background: 'var(--color-beige-100)', borderRadius: 4, height: 18, position: 'relative' }}>
             <div style={{ width: `${(r.value / max) * 100}%`, height: '100%', background: colourOf(r.tone), borderRadius: 4 }} />
             {marker && (

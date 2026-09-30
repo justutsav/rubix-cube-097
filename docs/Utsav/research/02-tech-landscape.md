@@ -54,13 +54,36 @@ the field is a **classification over a closed set**, not a transcription.
 
 ### 1.2 Dialects: the honest position
 
-| Language | 2011 Census speakers | Scheduled? | Bhashini / Sarvam / Google ASR |
-|---|---|---|---|
-| Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, … (22) | — | Yes | Covered |
-| **Bhojpuri** | **5.05 crore** | No | **None** |
-| **Rajasthani** | **2.58 crore** | No | **None** |
-| **Chhattisgarhi** | **1.62 crore** | No | **None** |
-| **Magahi** | **1.27 crore** | No | **None** |
+> **CORRECTED 2026-09-28.** The table below previously read "None" in every coverage cell.
+> **That was wrong as of 2026 and it leaked into the pitch video before a fact-check caught it.**
+> ASR models for all four now exist, and **Bhashini's own ASR list includes Bhojpuri and
+> Chhattisgarhi** — Bhashini being a thing MoSJE funds. Never claim "no model exists"; the
+> honest and still-strong claim is about **error rate**, not existence.
+
+| Language | 2011 Census speakers | Scheduled? | Best published WER | Bhashini ASR | Sarvam | Google STT |
+|---|---|---|---|---|---|---|
+| Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, … (22) | — | Yes | — | Covered | Covered (Saaras V4) | Covered |
+| **Bhojpuri** | **5.05 crore** | No | **27.8** | **Yes** | No | No |
+| **Rajasthani** | **2.58 crore** | No | **41.8** | No (TTS only) | No | No |
+| **Chhattisgarhi** | **1.62 crore** | No | **27.4** | **Yes** | No | No |
+| **Magahi** | **1.27 crore** | No | **30.4** | No (TTS/MT only) | No | No |
+
+Sum: **10.53 crore** speakers — do not round this to 11.
+
+WER figures are avg WER from **ARTPARK-IISc SraVaani-1.0** (FastConformer ~430M, ~31,270 h
+across 65 Indian languages/dialects) —
+[model card](https://huggingface.co/ARTPARK-IISc/SraVaani-1.0). Also shipping now:
+[RESPIN-S1.0 (IISc SPIRE)](https://spiredatasets.ee.iisc.ac.in/respincorpus) with ASR baselines
+and corpora for Magahi and Chhattisgarhi, Bodhan AI Indic-Transcribe (Sept 2026) covering
+Bhojpuri, and wav2vec2 Bhojpuri models on Hugging Face.
+[Bhashini model list](https://dibd-bhashini.gitbook.io/bhashini-apis/available-models-for-usage).
+
+**What survives the correction, and why the design does not change:** the best model available
+still misses roughly **three words in ten**, and four in ten for Rajasthani. That is the whole
+premise of `decisions.md` — "assume the transcript is wrong". A field classified over a closed
+set, with phonetic matching and spoken confirmation, is the right architecture at 27.8 WER for
+exactly the reason it was the right architecture at "no coverage". The argument was never
+scarcity; it was error.
 
 Sources: [Bhojpuri/Census](https://en.wikipedia.org/wiki/Bhojpuri_language),
 [Shankar IAS on 2011 language data](https://www.shankariasparliament.com/article/language-data-of-2011-census).

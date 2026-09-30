@@ -15,7 +15,21 @@
  * numbers rather than described in a README nobody opens.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {
+  Briefcase,
+  ChartColumn,
+  Download,
+  FolderKanban,
+  Scale,
+  ScrollText,
+  ShieldCheck,
+  Timer,
+  TriangleAlert,
+  UserRound,
+  Users,
+  Wrench,
+} from 'lucide-react';
 import {
   catalogueStats,
   conceptLabel,
@@ -30,17 +44,17 @@ import {
   spreadReport,
   type Education,
 } from '@rc097/core';
-import { AppShell, Band, BarChart, Card, Stat, StatusChip, useMemoAsync, useTick } from '../components';
+import { AdminShell, AdminTabs, Band, BarChart, Card, Funnel, Kpi, Stat, StatusChip, useMemoAsync, useTick } from '../components';
 import { openStore } from '../lib/db';
 
 type Tab = 'demand' | 'plan' | 'consent' | 'quality' | 'audit';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'demand', label: 'Demand' },
-  { id: 'plan', label: 'Perspective Plan' },
-  { id: 'consent', label: 'Consent register' },
-  { id: 'quality', label: 'Spread & quality' },
-  { id: 'audit', label: 'Audit trail' },
+const TABS: { id: Tab; label: string; icon: ReactNode; hint: string }[] = [
+  { id: 'demand', label: 'Demand', icon: <ChartColumn size={17} />, hint: 'Who asked for what' },
+  { id: 'plan', label: 'Perspective Plan', icon: <FolderKanban size={17} />, hint: 'The April artefact' },
+  { id: 'consent', label: 'Consent register', icon: <ShieldCheck size={17} />, hint: 'Script version per row' },
+  { id: 'quality', label: 'Spread & quality', icon: <Scale size={17} />, hint: 'Against the CAG finding' },
+  { id: 'audit', label: 'Audit trail', icon: <ScrollText size={17} />, hint: 'R1–R9, and the why' },
 ];
 
 /** First week of April, per the guidelines' own annual calendar. */
@@ -76,7 +90,13 @@ export default function Officer() {
   const cat = useMemo(() => catalogueStats(), []);
   const deadline = useMemo(() => nextAprilDeadline(), []);
 
-  if (!data) return <AppShell title="District console"><div className="b-main">Loading…</div></AppShell>;
+  if (!data) {
+    return (
+      <AdminShell brand="Livelihood Console" district="—" tabs={TABS} tab={tab} onTab={(id) => setTab(id as Tab)}>
+        <div className="b-main">Loading…</div>
+      </AdminShell>
+    );
+  }
 
   const { beneficiaries, answers, recos, consent, outcomes, telemetry } = data;
 
@@ -96,13 +116,25 @@ export default function Officer() {
     byBlock.set(k, (byBlock.get(k) ?? 0) + 1);
   }
 
+  // Name the district the rows are actually from, rather than a build-time constant.
+  const districtCounts = new Map<string, number>();
+  for (const b of beneficiaries) {
+    if (b.districtName) districtCounts.set(b.districtName, (districtCounts.get(b.districtName) ?? 0) + 1);
+  }
+  const districtName = [...districtCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const demo = beneficiaries.some((b) => b.id.startsWith('demo-'));
+
   const women = beneficiaries.filter((b) => b.isWoman).length;
   const womenShare = beneficiaries.length ? Math.round((women / beneficiaries.length) * 100) : 0;
   const nearMiss = recos.filter((r) => r.result.nearMiss.length > 0).length;
   const pmDaksh = recos.filter((r) => r.result.routeToPmDaksh?.route).length;
   const placed = outcomes.filter((o) => o.status === 'PLACED').length;
   const enrolled = outcomes.filter((o) => o.status === 'ENROLLED').length;
+  const certified = outcomes.filter((o) => o.status === 'CERTIFIED').length;
   const placementRate = enrolled > 0 ? Math.round((placed / enrolled) * 100) : null;
+  const complete = beneficiaries.filter(
+    (b) => answers.filter((a) => a.beneficiaryId === b.id && a.confirmedAt).length === 7,
+  ).length;
 
   const ladderRungs = new Map<string, number>();
   for (const a of answers) ladderRungs.set(a.method, (ladderRungs.get(a.method) ?? 0) + 1);
@@ -111,78 +143,125 @@ export default function Officer() {
   const medianLatency = latencies.length ? latencies.sort((a, b) => a - b)[Math.floor(latencies.length / 2)] : null;
 
   return (
-    <AppShell
-      title="District console"
-      subtitle={`${DISTRICTS.map((d) => d.name).join(' · ')} · DL-PACC`}
+    <AdminShell
+      brand="Livelihood Console"
+      district={districtName ?? DISTRICTS.map((d) => d.name).join(' · ')}
+      tabs={TABS}
+      tab={tab}
+      onTab={(id) => setTab(id as Tab)}
+      meta={
+        <>
+          <Kpi
+            value={deadline.days}
+            label="Days to submit"
+            note={deadline.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            tone={deadline.days < 45 ? 'bad' : 'warn'}
+            icon={<Timer size={16} />}
+          />
+          <Kpi value={beneficiaries.length} label="On register" note={`${complete} complete profiles`} icon={<Users size={16} />} />
+        </>
+      }
+      actions={
+        <button
+          type="button"
+          className="b-btn"
+          onClick={() => downloadCsv('convergence.csv', convergenceCsv(spread.rows, byBlock))}
+          disabled={spread.rows.length === 0}
+        >
+          <Download size={16} /> Convergence CSV
+        </button>
+      }
       bands={
         <>
-          {prov.warning && <Band tone="bad">{prov.warning}</Band>}
-          {cat.prototype > 0 && (
+          {demo && (
             <Band tone="warn">
-              {cat.prototype} of {cat.total} course rows are prototype data with NULL QP codes. Run
-              <span className="mono"> python3 scripts/import_nqr.py </span> to replace them with the
-              official 2,814-row NQR export.
+              Demonstration data — {beneficiaries.length} seeded rows, real engine output. Not a live register.
             </Band>
+          )}
+          {(prov.warning || cat.prototype > 0) && (
+            <details className="prov-note">
+              <summary>
+                Data provenance — {cat.prototype > 0 ? `${cat.prototype}/${cat.total} course rows are prototype` : 'see detail'}
+              </summary>
+              {prov.warning && <p>{prov.warning}</p>}
+              {cat.prototype > 0 && (
+                <p>
+                  Prototype rows carry NULL QP codes and are never labelled official. Replace with
+                  <span className="mono"> python3 scripts/import_nqr.py</span> (2,814-row NQR export).
+                </p>
+              )}
+            </details>
           )}
         </>
       }
     >
-      <div style={{ display: 'flex', gap: 6, padding: '10px 12px 0', overflowX: 'auto', maxWidth: '88rem', marginInline: 'auto' }}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="b-btn"
-            data-variant={tab === t.id ? undefined : 'ghost'}
-            onClick={() => setTab(t.id)}
-            style={{ whiteSpace: 'nowrap' }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <AdminTabs tabs={TABS} tab={tab} onTab={(id) => setTab(id as Tab)} />
 
       {tab === 'demand' && (
         <div className="b-main">
-          <Card title="Register">
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              <Stat value={beneficiaries.length} label="Beneficiaries" />
-              <Stat value={`${womenShare}%`} label="Women (target 30%)" tone={womenShare < 30 ? 'bad' : 'ok'} />
-              <Stat value={nearMiss} label="Near miss" tone="warn" />
-              <Stat value={pmDaksh} label="→ PM-DAKSH" />
-            </div>
-          </Card>
+          {/* The five numbers a District Collector is actually answerable for, each next to the
+              figure it is judged against. A tile without its mandate is a tile that flatters. */}
+          <div className="kpi-row">
+            <Kpi value={beneficiaries.length} label="Beneficiaries" note={`${complete} completed all seven questions`} icon={<Users size={16} />} />
+            <Kpi
+              value={`${womenShare}%`}
+              label="Women"
+              note="Guidelines set a 30% floor"
+              tone={womenShare < 30 ? 'bad' : 'ok'}
+              icon={<UserRound size={16} />}
+            />
+            <Kpi value={spread.distinct} label="Distinct trades" note={`${Math.round(spread.topShare * 100)}% of demand in the top 10`} icon={<Wrench size={16} />} />
+            <Kpi value={nearMiss} label="Near miss" note="One gap away from eligible" tone="warn" icon={<TriangleAlert size={16} />} />
+            <Kpi
+              value={placementRate === null ? '—' : `${placementRate}%`}
+              label="Placement"
+              note="Mandated 70% · CAG measured PMKVY at 41.29%"
+              tone={placementRate !== null && placementRate < 70 ? 'bad' : 'ok'}
+              icon={<Briefcase size={16} />}
+            />
+          </div>
 
-          <Card title="Placement (Basic Issue 3)">
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              <Stat value={enrolled} label="Joined" />
-              <Stat value={placed} label="Working" tone="ok" />
-              <Stat
-                value={placementRate === null ? '—' : `${placementRate}%`}
-                label="vs 70% mandated"
-                tone={placementRate !== null && placementRate < 70 ? 'bad' : 'ok'}
-              />
-            </div>
-            <p className="muted" style={{ marginBottom: 0 }}>
-              The guidelines mandate 70% placement in wage or self-employment. CAG measured PMKVY at
-              41.29%. This number is updated from the mobiliser's call list, not from a separate screen.
+          <Card title="Demand by trade — confirmed answers only" span={5}>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Nothing enters this chart until the beneficiary has heard it read back and agreed.
             </p>
-          </Card>
-
-          <Card title="Demand by block" wide>
-            <BarChart rows={[...byBlock.entries()].map(([label, value]) => ({ label, value }))} />
-          </Card>
-
-          <Card title="Demand by trade (confirmed answers only)" wide>
             <BarChart
-              rows={spread.rows.slice(0, 12).map((r) => ({ label: conceptLabel(r.conceptId, 'en'), value: r.count }))}
+              rows={spread.rows.slice(0, 8).map((r) => ({ label: conceptLabel(r.conceptId, 'en'), value: r.count }))}
             />
           </Card>
 
-          <Card title="Convergence export" wide>
+          <Card title="Demand by block" span={3}>
+            <BarChart rows={[...byBlock.entries()].map(([label, value]) => ({ label, value }))} />
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Block is the unit a GIA project is costed at, so this is the split that becomes plan lines.
+            </p>
+          </Card>
+
+          <Card title="From interview to work — Basic Issue 3" span={4}>
+            <Funnel
+              steps={[
+                { label: 'Asked', value: beneficiaries.length },
+                { label: 'Matched', value: recos.length },
+                { label: 'Joined', value: enrolled },
+                { label: 'Certified', value: certified },
+                { label: 'Working', value: placed, tone: 'eligible' },
+              ]}
+            />
+            <p className="muted" style={{ marginBottom: 0 }}>
+              An enrolment dashboard cannot see whether anyone got work; somebody has to ask.
+            </p>
+          </Card>
+
+          <Card title="Where this goes next" span={12}>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 10 }}>
+              <Stat value={pmDaksh} label="→ PM-DAKSH" />
+              <Stat value={spread.total} label="confirmed demand signals" />
+              <Stat value="3.5-4×" label="notional allocation to project" />
+            </div>
             <p className="muted" style={{ marginTop: 0 }}>
-              Batch-shaped hand-off for SSDM, DSC and the NSFDC/NSKFDC channelising agencies —
-              "here are N people in this block who want and are eligible for this qualification".
+              Batch-shaped hand-off for SSDM, DSC and the NSFDC/NSKFDC channelising agencies — "here
+              are N people in this block who want, and are eligible for, this qualification". The
+              export carries no phone numbers and no transcripts, because neither is stored.
             </p>
             <button
               type="button"
@@ -190,7 +269,7 @@ export default function Officer() {
               onClick={() => downloadCsv('convergence.csv', convergenceCsv(spread.rows, byBlock))}
               disabled={spread.rows.length === 0}
             >
-              Download CSV
+              <Download size={16} /> Convergence CSV
             </button>
           </Card>
         </div>
@@ -483,7 +562,7 @@ export default function Officer() {
           </Card>
         </div>
       )}
-    </AppShell>
+    </AdminShell>
   );
 }
 

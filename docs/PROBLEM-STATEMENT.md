@@ -118,15 +118,21 @@ R2 says *languages **and** dialects*. Those are different problems with differen
 - **Languages**: the 22 scheduled languages. Bhashini and Sarvam both cover these. Solved
   by a vendor call.
 - **Dialects**: Bhojpuri (5.05 crore speakers), Rajasthani (2.58 crore), Chhattisgarhi
-  (1.62 crore), Magahi (1.27 crore) — all **non-scheduled**, all with **zero coverage**
-  in Bhashini, Sarvam or Google STT, and all concentrated in exactly the SC-heavy states
-  PM-AJAY targets.
+  (1.62 crore), Magahi (1.27 crore) — ~**10.53 crore** between them, all **non-scheduled**,
+  and all concentrated in exactly the SC-heavy states PM-AJAY targets.
 
-The entire published annotated speech corpus for Awadhi + Bhojpuri + Braj + Magahi
-combined is **~18 hours**. Whisper was trained on 680,000. Anyone who says "we support
-dialects" because they passed `hi-IN` to an API is lying, and a jury from MoSJE — whose
-field staff work in those districts — is the one jury likely to catch it.
-Evidence and the honest answer: `docs/Utsav/research/02-tech-landscape.md` §1.
+> **CORRECTED 2026-09-28.** This section previously said these four had *"zero coverage in
+> Bhashini, Sarvam or Google STT"*. **Wrong.** Models exist for all four, and Bhashini's own
+> ASR list includes Bhojpuri and Chhattisgarhi. The live figures are error rates, not absence:
+> best published WER is **27.8 / 41.8 / 27.4 / 30.4** respectively (ARTPARK-IISc SraVaani-1.0).
+> See `docs/Utsav/research/02-tech-landscape.md` §1.2 and the corrected entry in
+> `docs/decisions.md`.
+
+The best available model still misses roughly **three words in ten**, and four in ten for
+Rajasthani. Anyone who says "we support dialects" because they passed `hi-IN` to an API is
+lying, and a jury from MoSJE — whose field staff work in those districts — is the one jury
+likely to catch it. **So is anyone who says no model exists.** Claim the error rate, never the
+absence. Evidence and the honest answer: `docs/Utsav/research/02-tech-landscape.md` §1.2.
 
 ### §3 — the five "Basic Issues" are a second product hiding in the PS
 

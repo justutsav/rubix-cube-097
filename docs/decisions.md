@@ -36,11 +36,28 @@ match → small-LLM enum classification → **spoken confirmation**. Low confide
 not an error.
 
 ## 2026-09-25 — we do not claim a dialect ASR model
+### CORRECTED 2026-09-28 — the reason changed; the decision did not
 
-Bhojpuri, Rajasthani, Chhattisgarhi and Magahi have ~11 crore speakers between them, zero
-coverage in Bhashini/Sarvam/Google, and ~18 hours of published corpus for four of them
-combined. We absorb the error in the matching layer and we **publish the measurement**. Any
-sentence implying we support dialects at the model level is a lie a MoSJE jury can catch.
+**What this entry originally said was wrong:** that Bhojpuri, Rajasthani, Chhattisgarhi and
+Magahi have "zero coverage in Bhashini/Sarvam/Google". Models for all four exist, and
+**Bhashini's own ASR list carries Bhojpuri and Chhattisgarhi**. The error reached a draft of
+the pitch video — "there is no speech model for Bhojpuri" — before a fact-check caught it.
+Said to a MoSJE jury that funds Bhashini, it would have ended the pitch.
+
+**The corrected position.** Those four are ~**10.53 crore** speakers (not 11), all
+non-scheduled. Best published WER, ARTPARK-IISc SraVaani-1.0: Bhojpuri **27.8**,
+Chhattisgarhi **27.4**, Magahi **30.4**, Rajasthani **41.8**. See
+`docs/Utsav/research/02-tech-landscape.md` §1.2 for the full table and sources.
+
+**The decision is unchanged, because it never rested on scarcity — it rested on error.** The
+best available model still misses about three words in ten. We absorb that in the matching
+layer and we **publish the measurement**. Any sentence implying we improve on the published
+model-level dialect accuracy is a lie a MoSJE jury can catch. So is any sentence implying no
+model exists. **Claim the error rate, never the absence.**
+
+Caveat on "publish the measurement": our figures in `docs/Prashant/ivr/05-measurements.md` are
+synthetic gTTS Hindi over a simulated line, not dialect audio. That file says so. Do not let a
+slide or a voiceover imply we measured Bhojpuri.
 
 ## 2026-09-25 — eligibility is a hard gate before ranking, never a score
 

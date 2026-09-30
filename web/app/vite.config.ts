@@ -21,5 +21,11 @@ export default defineConfig({
     sourcemap: true,
   },
   base: './',
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    // `cap sync` copies a built bundle into android/.../assets/public. Vite's dep scanner
+    // crawls it and dies resolving imports that only exist in that stale output.
+    watch: { ignored: ['**/android/**'] },
+  },
+  optimizeDeps: { entries: ['index.html', 'src/**/*.{ts,tsx}'] },
 });

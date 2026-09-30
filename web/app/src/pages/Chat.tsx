@@ -34,7 +34,8 @@ import {
   type Locale,
   type Profile,
 } from '@rc097/core';
-import { AppShell, Speak, StatusChip, useMemoAsync } from '../components';
+import { AppShell, Speak, StatusChip, useMemoAsync, useRole } from '../components';
+import { isOfficer } from '../lib/role';
 import { openStore } from '../lib/db';
 import { ASR_LOCALE, asrAvailable, recognise } from '../lib/speech';
 
@@ -193,6 +194,8 @@ function answer(intent: Intent, profile: Profile | null): Omit<Msg, 'who'> {
 }
 
 export default function Chat() {
+  // Citations are audit provenance. Useful to an officer, noise to the person being helped.
+  const showCite = isOfficer(useRole());
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       who: 'them',
@@ -251,7 +254,7 @@ export default function Chat() {
   const catalogueNote = useMemo(() => QUALIFICATIONS.filter((q) => q.qpCode === null).length, []);
 
   return (
-    <AppShell title="पूछिए" subtitle="Works offline · no message is sent anywhere">
+    <AppShell title="पूछिए" subtitle="बिना इंटरनेट भी चलता है · कोई संदेश कहीं नहीं जाता">
       <div className="b-main" style={{ gridTemplateColumns: '1fr', maxWidth: '48rem' }}>
         <div style={{ display: 'grid', gap: 12 }}>
           {msgs.map((m, i) => (
@@ -281,7 +284,7 @@ export default function Chat() {
               )}
               {/* The citation is the product. An answer about eligibility without its clause is a
                   rumour, and this is the jury's first question. */}
-              {m.cite && <div className="mono muted" style={{ fontSize: 12 }}>↳ {m.cite}</div>}
+              {m.cite && showCite && <div className="mono muted" style={{ fontSize: 12 }}>↳ {m.cite}</div>}
             </div>
           ))}
           <div ref={endRef} />
@@ -323,7 +326,9 @@ export default function Chat() {
         </form>
       </div>
 
-      <div style={{ padding: '0 12px 12px' }}>
+      {/* Catalogue provenance is ours to worry about, not hers. An officer reviewing the same
+          screen still needs it, so it is gated rather than deleted. */}
+      <div style={{ padding: '0 12px 12px', display: showCite ? undefined : 'none' }}>
         <StatusChip tone="near">{catalogueNote} course rows are prototype data pending the NQR import</StatusChip>
       </div>
     </AppShell>

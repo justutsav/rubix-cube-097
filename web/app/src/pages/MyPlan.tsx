@@ -11,10 +11,12 @@ import {
   type FieldNo,
   type ScoredQualification,
 } from '@rc097/core';
-import { AppShell, Band, Card, Speak, StatusChip, useMemoAsync, useTick } from '../components';
+import { AppShell, Band, Card, Speak, StatusChip, useMemoAsync, useRole, useTick } from '../components';
+import { isOfficer } from '../lib/role';
 import { openStore } from '../lib/db';
 
 export default function MyPlan() {
+  const officer = isOfficer(useRole());
   const tick = useTick(6000);
   const data = useMemoAsync(
     async () => {
@@ -33,12 +35,11 @@ export default function MyPlan() {
 
   if (!me) {
     return (
-      <AppShell title="My plan">
+      <AppShell title="मेरी योजना">
         <div className="b-main">
-          <Card title="Nothing yet" wide>
-            <p className="muted" style={{ margin: 0 }}>
-              Finish the conversation on the Interview tab and the plan appears here — to hear again
-              whenever you like.
+          <Card title="अभी कुछ नहीं" wide>
+            <p className="muted" lang="hi" style={{ margin: 0 }}>
+              बातचीत पूरी कीजिए — फिर आपकी योजना यहीं दिखेगी, और जब चाहें दोबारा सुन सकती हैं।
             </p>
           </Card>
         </div>
@@ -51,9 +52,9 @@ export default function MyPlan() {
 
   return (
     <AppShell
-      title="My plan"
+      title="मेरी योजना"
       subtitle={[me.villageName, me.blockName, me.districtName].filter(Boolean).join(' · ') || undefined}
-      bands={r?.containsPrototypeData ? <Band tone="warn">Prototype course catalogue — QP codes are NULL until the official NQR import runs.</Band> : undefined}
+      bands={officer && r?.containsPrototypeData ? <Band tone="warn">Prototype course catalogue — QP codes are NULL until the official NQR import runs.</Band> : undefined}
     >
       <div className="b-main" style={{ gridTemplateColumns: '1fr', maxWidth: '52rem' }}>
         {all.length === 0 && (
@@ -85,11 +86,13 @@ export default function MyPlan() {
                   {sq.gate.gap.needLocal ?? sq.gate.gap.need}
                 </p>
               )}
-              {q.qpCode ? (
-                <div className="mono muted">QP {q.qpCode}</div>
-              ) : (
-                <div className="mono" style={{ color: 'var(--color-amber-600)' }}>QP code pending official NQR import</div>
-              )}
+              {/* Catalogue provenance is audit material for an officer, noise to her. */}
+              {officer &&
+                (q.qpCode ? (
+                  <div className="mono muted">QP {q.qpCode}</div>
+                ) : (
+                  <div className="mono" style={{ color: 'var(--color-amber-600)' }}>QP code pending official NQR import</div>
+                ))}
             </Card>
           );
         })}

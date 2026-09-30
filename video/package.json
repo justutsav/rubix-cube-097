@@ -1,0 +1,44 @@
+{
+  "name": "rc097-explainer",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "npm run render:raw && npm run normalize",
+    "render:raw": "remotion render src/index.ts Explainer out/explainer_raw.mp4 --concurrency 4",
+    "normalize": "ffmpeg -v error -i out/explainer_raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k out/explainer.mp4 -y",
+    "render:slide:raw": "remotion render src/index.ts ExplainerSlide out/explainer_slide_raw.mp4 --concurrency 4",
+    "normalize:slide": "ffmpeg -v error -i out/explainer_slide_raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k out/explainer_slide.mp4 -y",
+    "render:slide": "npm run render:slide:raw && npm run normalize:slide",
+    "render:s2:raw": "remotion render src/index.ts ExplainerS2 out/explainer_s2_raw.mp4 --concurrency 4",
+    "normalize:s2": "ffmpeg -v error -i out/explainer_s2_raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k out/explainer_s2.mp4 -y",
+    "render:s2": "npm run render:s2:raw && npm run normalize:s2",
+    "render:s2:sfx": "remotion render src/index.ts ExplainerS2 out/s2_sfx_raw.mp4 --concurrency 4 --props='{\"muteNarration\":true}'",
+    "render:slide:sfx": "remotion render src/index.ts ExplainerSlide out/slide_sfx_raw.mp4 --concurrency 4 --props='{\"muteNarration\":true}'",
+    "render:s1:raw": "remotion render src/index.ts ExplainerS1 out/explainer_s1_raw.mp4 --concurrency 4",
+    "normalize:s1": "ffmpeg -v error -i out/explainer_s1_raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k out/explainer_s1.mp4 -y",
+    "render:s1": "npm run render:s1:raw && npm run normalize:s1",
+    "render:s1:sfx": "remotion render src/index.ts ExplainerS1 out/s1_sfx_raw.mp4 --concurrency 4 --props='{\"muteNarration\":true}'",
+    "normalize:s1:sfx": "ffmpeg -v error -i out/s1_sfx_raw.mp4 -c:v copy -af volume=16.4dB -c:a aac -b:a 192k out/Section1_Explainer_SFXonly.mp4 -y",
+    "render:s4:raw": "remotion render src/index.ts ExplainerS4 out/explainer_s4_raw.mp4 --concurrency 4",
+    "normalize:s4": "ffmpeg -v error -i out/explainer_s4_raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k out/explainer_s4.mp4 -y",
+    "render:s4": "npm run render:s4:raw && npm run normalize:s4",
+    "render:s4:sfx": "remotion render src/index.ts ExplainerS4 out/s4_sfx_raw.mp4 --concurrency 4 --props='{\"muteNarration\":true}'",
+    "normalize:s4:sfx": "ffmpeg -v error -i out/s4_sfx_raw.mp4 -c:v copy -af volume=16.9dB -c:a aac -b:a 192k out/Section4_Explainer_SFXonly.mp4 -y",
+    "render:s5:raw": "remotion render src/index.ts ExplainerS5 out/explainer_s5_raw.mp4 --concurrency 4",
+    "normalize:s5": "ffmpeg -v error -i out/explainer_s5_raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k out/explainer_s5.mp4 -y",
+    "render:s5": "npm run render:s5:raw && npm run normalize:s5",
+    "render:s5:sfx": "remotion render src/index.ts ExplainerS5 out/s5_sfx_raw.mp4 --concurrency 4 --props='{\"muteNarration\":true}'",
+    "normalize:s5:sfx": "ffmpeg -v error -i out/s5_sfx_raw.mp4 -c:v copy -af volume=22.6dB -c:a aac -b:a 192k out/Section5_Explainer_SFXonly.mp4 -y"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.529",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.529"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "typescript": "5.6.3"
+  }
+}

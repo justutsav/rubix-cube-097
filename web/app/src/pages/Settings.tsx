@@ -15,6 +15,7 @@ import { openStore } from '../lib/db';
 import { serverConfigured, signOut, supabase, syncOutbox } from '../lib/supabase';
 import { ROLES, setRole as persistRole, type Role } from '../lib/role';
 import { asrAvailable, ttsAvailable } from '../lib/speech';
+import { seedDemo } from '../lib/demo';
 
 const ASR_PROVIDERS = [
   { id: 'webspeech', label: 'Browser speech (this build)', note: 'Free, zero setup. Needs network on most Android handsets, and its Hindi model is roughly Google STT — 59.9 WER on dialectal telephone Hindi.', live: true },
@@ -25,6 +26,8 @@ const ASR_PROVIDERS = [
 ];
 
 export default function Settings({ role, onRole }: { role: Role | null; onRole: (r: Role) => void }) {
+  const [seeding, setSeeding] = useState(false);
+  const [seedNote, setSeedNote] = useState<string | null>(null);
   const nav = useNavigate();
   const tick = useTick(6000);
   const [busy, setBusy] = useState(false);
@@ -86,6 +89,31 @@ export default function Settings({ role, onRole }: { role: Role | null; onRole: 
               </button>
             ))}
           </div>
+        </Card>
+
+        {/* The demo seed is only reachable by URL, which is impossible inside the APK — so on a
+            real handset the officer console was permanently empty. */}
+        <Card title="Demonstration data">
+          <p className="muted" style={{ marginTop: 0 }}>
+            Seeds twelve beneficiaries across three blocks of one district and runs them through the
+            real recommendation engine. Rows are marked as demo on the console. Use it to show the
+            officer screens with something in them.
+          </p>
+          <button
+            type="button"
+            className="b-btn"
+            disabled={seeding}
+            onClick={() => {
+              setSeeding(true);
+              void seedDemo()
+                .then((n) => setSeedNote(`Seeded ${n} beneficiaries.`))
+                .catch((e) => setSeedNote(`Failed: ${String(e)}`))
+                .finally(() => setSeeding(false));
+            }}
+          >
+            {seeding ? 'Seeding…' : '🌱 Load demonstration data'}
+          </button>
+          {seedNote && <p className="mono muted" style={{ marginBottom: 0 }}>{seedNote}</p>}
         </Card>
 
         <Card title="Account">

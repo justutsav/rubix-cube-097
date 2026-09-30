@@ -19,9 +19,16 @@ export const SPOKEN_LOCALES: Locale[] = ['hi', 'mai', 'bho', 'mag', 'raj', 'cgh'
  * Maithili sits in the first group and the other four do not, and the reason is constitutional
  * rather than technical: Maithili is in the Eighth Schedule, so Sarvam and Bhashini both carry it
  * (`mai-IN`). Bhojpuri (5.05 crore speakers), Rajasthani (2.58 cr), Chhattisgarhi (1.62 cr) and
- * Magahi (1.27 cr) are non-scheduled, and there is no commercial or open model for any of them —
- * about 11 crore speakers with zero coverage. That gap is the whole reason the extraction ladder
- * exists, and it is measured rather than papered over.
+ * Magahi (1.27 cr) are non-scheduled — ~10.5 crore speakers between them.
+ *
+ * **Corrected 2026-09-28.** This comment used to say those four had "zero coverage". They do not.
+ * Models exist for all four, and Bhashini's own ASR list carries Bhojpuri and Chhattisgarhi. What
+ * is true is the error rate: best published WER is 27.8 / 41.8 / 27.4 / 30.4 respectively
+ * (ARTPARK-IISc SraVaani-1.0) — roughly three words in ten wrong, four in ten for Rajasthani.
+ * They sit outside this list because we do not wire them, not because nothing exists.
+ *
+ * That error rate, not any absence, is the whole reason the extraction ladder exists: the unit of
+ * the system is a field classified over a closed set, never a transcript. See `decisions.md`.
  */
 export const ASR_BACKED_LOCALES: Locale[] = ['hi', 'mai', 'ta', 'en'];
 

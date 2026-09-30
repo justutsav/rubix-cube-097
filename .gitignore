@@ -62,3 +62,11 @@ graphify-out/
 .claude/
 .vercel/
 *.egg-info/
+
+# Rendered video and narration audio. ~160MB of binaries that bloat every clone
+# forever and are not source. They ship as GitHub release assets instead —
+# see the release page. Re-render with `npm run build` inside video/.
+docs/Utsav/video/**/*.mp4
+docs/Utsav/video/**/*.wav
+video/public/**/*.wav
+video/out/

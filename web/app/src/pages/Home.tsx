@@ -6,64 +6,26 @@
  * beneficiary. It was an engine with one screen bolted on, not an application.
  *
  * Each role's home answers one question and nothing else:
- *   beneficiary — "where had I got to, and what do I do next?"
- *   mobiliser   — "who is left in this village today?"
- *   officer     — "how close is the April deadline and what is the register telling me?"
+ *   beneficiary      — "where had I got to, and what do I do next?"
+ *   district officer — "how close is April and what is the register telling me?"
+ *   state officer    — "which districts go first, and when must I forward?"
+ *
+ * The mobiliser home was removed on 2026-09-28 along with the role.
  */
 
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { conceptLabel } from '@rc097/core';
-import { AppShell, Band, Beads, Card, OfflineBand, Speak, Stat, StatusChip, useMemoAsync, useTick } from '../components';
+import { AppShell, Beads, Card, OfflineBand, Speak, Stat, StatusChip, useMemoAsync, useTick } from '../components';
 import { openStore } from '../lib/db';
-import { ROLES, setRole, type Role } from '../lib/role';
-import { serverConfigured, supabase } from '../lib/supabase';
+import { type Role } from '../lib/role';
 
-export default function Home({ role, onRole }: { role: Role | null; onRole: (r: Role) => void }) {
-  if (!role) return <RoleChooser onRole={onRole} />;
+export default function Home({ role }: { role: Role | null; onRole: (r: Role) => void }) {
+  // First run has its own flow now — language, then role, then the mic. `/` never renders a
+  // bare chooser at somebody who has no idea what this app is.
+  if (!role) return <Navigate to="/welcome" replace />;
   if (role === 'beneficiary') return <BeneficiaryHome />;
-  if (role === 'mobiliser') return <MobiliserHome />;
-  return <OfficerHome />;
-}
-
-// ---------------------------------------------------------------------------- first run
-
-function RoleChooser({ onRole }: { onRole: (r: Role) => void }) {
-  const [busy, setBusy] = useState(false);
-  const pick = async (r: Role) => {
-    setBusy(true);
-    await setRole(r);
-    onRole(r);
-  };
-  return (
-    <div className="a-screen">
-      <div className="a-stage">
-        <div style={{ fontSize: 'var(--text-label)', letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.7 }}>
-          PM-AJAY · Grant-in-Aid
-        </div>
-        <Speak
-          locale="hi"
-          className="a-question"
-          text="नमस्ते। आप कौन हैं? नीचे से चुनिए।"
-        />
-        <p className="muted" style={{ color: 'var(--color-plum-300)', marginTop: -4 }}>
-          Choose once. You can change it later in Settings.
-        </p>
-      </div>
-      <div className="a-actions">
-        {ROLES.map((r) => (
-          <button key={r.id} type="button" className="a-btn" disabled={busy} onClick={() => void pick(r.id)}>
-            <span className="a-btn-icon" aria-hidden>{r.icon}</span>
-            <span>
-              <span lang="hi" style={{ display: 'block' }}>{r.labelLocal}</span>
-              <span style={{ display: 'block', fontSize: 'var(--text-label)', opacity: 0.65 }}>{r.label}</span>
-              <span style={{ display: 'block', fontSize: 'var(--text-label)', opacity: 0.5, marginTop: 2 }}>{r.blurb}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  if (role === 'state_officer') return <StateOfficerHome />;
+  return <DistrictOfficerHome />;
 }
 
 // ---------------------------------------------------------------------------- beneficiary
@@ -169,88 +131,6 @@ function BeneficiaryHome() {
   );
 }
 
-// ---------------------------------------------------------------------------- mobiliser
-
-function MobiliserHome() {
-  const nav = useNavigate();
-  const tick = useTick(6000);
-  const d = useMemoAsync(
-    async () => {
-      const store = await openStore();
-      const [people, answers, pending] = await Promise.all([
-        store.listBeneficiaries(),
-        store.listAnswers(),
-        store.outboxSize(),
-      ]);
-      const doneIds = new Set(
-        people
-          .filter((b) => answers.filter((a) => a.beneficiaryId === b.id && a.confirmedAt).length === 7)
-          .map((b) => b.id),
-      );
-      const women = people.filter((b) => b.isWoman).length;
-      return {
-        total: people.length,
-        done: doneIds.size,
-        pendingPeople: people.length - doneIds.size,
-        womenShare: people.length ? Math.round((women / people.length) * 100) : 0,
-        pending,
-      };
-    },
-    [tick],
-    { total: 0, done: 0, pendingPeople: 0, womenShare: 0, pending: 0 },
-  );
-
-  return (
-    <AppShell
-      title="Village worker"
-      subtitle="Assisted mode"
-      bands={
-        <>
-          <OfflineBand pending={d.pending} />
-          {d.total > 0 && d.womenShare < 30 && (
-            <Band tone="warn">
-              Women are {d.womenShare}% here. The guidelines require at least 30% in every skill
-              programme — that is a target to work towards, not a statistic to report.
-            </Band>
-          )}
-        </>
-      }
-    >
-      <div className="b-main">
-        <Card title="Today" wide>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            <Stat value={d.done} label="Completed" tone="ok" />
-            <Stat value={d.pendingPeople} label="To finish" tone="warn" />
-            <Stat value={`${d.womenShare}%`} label="Women" tone={d.womenShare < 30 ? 'bad' : 'ok'} />
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <button type="button" className="b-btn" onClick={() => nav('/interview')}>
-              🎤 Start an interview
-            </button>
-            <button type="button" className="b-btn" data-variant="ghost" onClick={() => nav('/field')}>
-              📋 Open the call list
-            </button>
-          </div>
-        </Card>
-
-        <Card title="Before you hand the phone over" wide>
-          <p style={{ margin: 0, fontSize: 'var(--text-bodysm)' }}>
-            Consent must be <strong>spoken by her</strong>. Your worker id is logged beside it as
-            evidence. You cannot consent on her behalf and there is no button that lets you.
-          </p>
-        </Card>
-
-        <Card title="Offline" wide>
-          <p className="muted" style={{ margin: 0 }}>
-            Everything works with the radio off. Interviews upload themselves when signal returns —
-            you never have to remember to sync.
-          </p>
-        </Card>
-      </div>
-    </AppShell>
-  );
-}
-
 // ---------------------------------------------------------------------------- officer
 
 function nextAprilDays(now = new Date()): number {
@@ -258,7 +138,7 @@ function nextAprilDays(now = new Date()): number {
   return Math.ceil((Date.UTC(year, 3, 7) - now.getTime()) / 86_400_000);
 }
 
-function OfficerHome() {
+function DistrictOfficerHome() {
   const nav = useNavigate();
   const tick = useTick(8000);
   const d = useMemoAsync(
@@ -331,18 +211,59 @@ function OfficerHome() {
   );
 }
 
-// ---------------------------------------------------------------------------- account strip
 
-export function AccountLine() {
-  const state = useMemoAsync(
+// ---------------------------------------------------------------------------- state officer
+
+function StateOfficerHome() {
+  const nav = useNavigate();
+  const tick = useTick(8000);
+  const d = useMemoAsync(
     async () => {
-      if (!supabase) return { phone: null as string | null };
-      const { data } = await supabase.auth.getSession();
-      return { phone: data.session?.user.phone ?? null };
+      const store = await openStore();
+      const [people, answers] = await Promise.all([store.listBeneficiaries(), store.listAnswers()]);
+      const districts = new Set(people.map((b) => b.districtName ?? 'Unassigned'));
+      const complete = people.filter(
+        (b) => answers.filter((a) => a.beneficiaryId === b.id && a.confirmedAt).length === 7,
+      ).length;
+      return { districts: districts.size, people: people.length, complete };
     },
-    [],
-    { phone: null as string | null },
+    [tick],
+    { districts: 0, people: 0, complete: 0 },
   );
-  if (!serverConfigured) return <StatusChip tone="neutral">Kiosk — no account</StatusChip>;
-  return state.phone ? <StatusChip tone="eligible">{state.phone}</StatusChip> : <StatusChip tone="near">Not signed in</StatusChip>;
+
+  // 15 April is the State's own deadline: appraise and prioritise what the districts sent.
+  const now = new Date();
+  const year = now.getMonth() > 3 || (now.getMonth() === 3 && now.getDate() > 15) ? now.getFullYear() + 1 : now.getFullYear();
+  const days = Math.ceil((Date.UTC(year, 3, 15) - now.getTime()) / 86_400_000);
+
+  return (
+    <AppShell title="State officer" subtitle="SL-PACC">
+      <div className="b-main">
+        <Card title="The deadline" wide>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <Stat value={days} label="days to prioritise (15 April)" tone={days < 45 ? 'bad' : 'warn'} />
+            <Stat value={d.districts} label="districts reporting" />
+          </div>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            SL-PACC appraises and <strong>prioritises</strong> what the districts uploaded, then
+            forwards to the Ministry by 21 April. The State does not re-verify district work.
+          </p>
+          <button type="button" className="b-btn" style={{ marginTop: 10 }} onClick={() => nav('/state')}>
+            🗺️ Rank the districts
+          </button>
+        </Card>
+
+        <Card title="Register">
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <Stat value={d.people} label="interviewed" />
+            <Stat value={d.complete} label="complete" tone="ok" />
+          </div>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            This device holds one district. The statewide view needs the server policy, which is
+            not written yet.
+          </p>
+        </Card>
+      </div>
+    </AppShell>
+  );
 }

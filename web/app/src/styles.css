@@ -1,4 +1,11 @@
 @import 'tailwindcss';
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+/*
+  ---break---
+*/
+@custom-variant dark (&:is(.dark *));
 
 /*
   Design tokens — see docs/DESIGN.md for the three iterations and why iterations 1 and 2 were
@@ -59,6 +66,7 @@
     -webkit-text-size-adjust: 100%;
     /* Stops a double-tap on a big button being read as a zoom gesture in the WebView. */
     touch-action: manipulation;
+    @apply font-sans;
   }
 
   body {
@@ -72,6 +80,7 @@
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     overscroll-behavior-y: none;
+    @apply bg-background text-foreground;
   }
 
   /* Devanagari renders visually smaller than Latin at the same px. Nudge it back. */
@@ -104,6 +113,9 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+  * {
+    @apply border-border outline-ring/50;
   }
 }
 
@@ -234,6 +246,21 @@
     flex: none;
   }
 
+  /* On a phone the result's two blocks are just the stack they always were. */
+  .a-script,
+  .a-paths {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  /* The answer block sits at the bottom of the stage on a phone, inside the thumb arc. */
+  .a-answer {
+    margin-top: auto;
+    display: grid;
+    gap: 0.75rem;
+  }
+
   /* The mic is the hero and never moves. 96px. */
   .a-mic {
     width: 6rem;
@@ -307,7 +334,12 @@
     font-weight: 650;
   }
 
+  /* Buttons in register B now carry a line icon beside the label rather than an emoji. */
   .b-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     min-height: 2.75rem; /* 44px floor, register B */
     padding: 0.5rem 0.875rem;
     border-radius: 0.625rem;
@@ -358,7 +390,12 @@
     font-size: var(--text-label);
     font-weight: 600;
     border: 1px solid transparent;
-    white-space: nowrap;
+    /* NOT nowrap. Short status chips ("Consented") never wrap anyway because they are short,
+       but the near-miss chip carries a full sentence — and an unwrappable sentence forced the
+       whole grid 86px wider than the phone, scrolling the Home tab off the left edge. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
   }
 
   .chip[data-tone='eligible'] { background: var(--color-teal-100); color: #0b5b55; border-color: #9cccc6; }
@@ -422,4 +459,624 @@
 
   .muted { color: var(--color-sand-700); font-size: var(--text-bodysm); }
   .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.875rem; }
+
+  /* ------------------------------------------------ Register A, desk width
+
+     The interview was drawn for a ₹6,000 phone and then shown on a 1600px screen, where the
+     one-thing-at-a-time stage became a band of empty plum with a strip of buttons under it. The
+     kiosk in a CSC is a desktop, and so is every screen this will ever be demonstrated on, so the
+     same two pieces get two columns: the spoken question on the left, what you can do about it on
+     the right. One rule survives the move — still one decision on screen, never two.
+  */
+  @media (width >= 64rem) {
+    /* Three explicit rows — bands, body, repeat bar — so the right column's tracks are sized by
+       the grid rather than by whichever child happens to be tallest. Leaving them implicit put
+       the actions a third of the way down a column they were supposed to be centred in. */
+    .a-screen {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 30rem;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      /* A fixed viewport, not a growing page: the stage scrolls inside its own column so the
+         actions beside it stay where they are instead of drifting below the fold. */
+      height: 100dvh;
+      background: var(--color-beige-100);
+    }
+
+    /* Offline and ASR-degraded bands speak to the whole screen, not to one column. */
+    .a-bands { grid-column: 1 / -1; grid-row: 1; }
+
+    .a-stage {
+      grid-column: 1;
+      grid-row: 2 / 4;
+      justify-content: center;
+      padding: 3rem 3.5rem;
+      overflow-y: auto;
+    }
+
+    /* The result is the only screen with more to show than one column of it. The spoken script
+       stays on the left, where it is played back line by line, and the pathways it is describing
+       sit beside it rather than a scroll below it. */
+    /* The result's actions are two buttons; it does not need the 30rem answer column that a
+       question does, and the pathways want the width more. */
+    .a-result {
+      grid-template-columns: minmax(0, 1fr) 20rem;
+    }
+
+    .a-result .a-stage {
+      display: grid;
+      grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      align-content: start;
+      gap: 1rem 2.5rem;
+      overflow: hidden;
+    }
+
+    .a-result .a-stage > * { max-width: none; margin-inline: 0; }
+    .a-result .a-stage > h1 { grid-column: 1 / -1; }
+
+    /* Each column scrolls on its own, so a long list of pathways never pushes the script it is
+       being read from off the screen. */
+    .a-script,
+    .a-paths {
+      align-content: start;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+
+    /* An open question has no option list, so there is no second column to fill. Rather than
+       leave half a screen of empty beige, the grid collapses and the question sits over the
+       microphone in one centred column. */
+    .a-screen:not(:has(> .a-actions)) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .a-screen:not(:has(> .a-actions)) .a-answer {
+      margin-top: 2.5rem;
+    }
+
+    /* -2/-1 rather than 2, so the same rule still lands in the right-hand column when an open
+       question drops the option list and the grid falls back to one column. */
+    .a-screen > .a-actions {
+      grid-column: -2 / -1;
+      grid-row: 2;
+      align-content: center;
+      border-top: 0;
+      border-left: 1px solid var(--color-beige-300);
+      padding: 2rem 2.25rem;
+      overflow-y: auto;
+    }
+
+    /* 30rem does not hold three columns of trade names without hyphenating them. */
+    .a-screen > .a-actions[data-layout='grid'] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .a-repeat {
+      grid-column: -2 / -1;
+      grid-row: 3;
+      border-left: 1px solid var(--color-beige-300);
+    }
+  }
+}
+/*
+  ---break---
+*/
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+/*
+  ---break---
+*/
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: #5b2150;            /* plum-700 — see docs/DESIGN.md */
+  --primary-foreground: #fdfaf6;
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+/*
+  ---break---
+*/
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+/* Data-provenance notes on the officer console.
+   These matter (a prototype row must never look official) but they are our bookkeeping, not the
+   officer's task. Collapsed by default so the console starts at the console. */
+.prov-note {
+  border: 1px solid var(--color-beige-200);
+  background: var(--color-beige-50);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: var(--text-bodysm);
+}
+.prov-note > summary { cursor: pointer; color: var(--color-sand-700); }
+.prov-note p { margin: 8px 0 0; color: var(--color-sand-700); }
+
+/* Officer console tab strip.
+   It used to be a single non-wrapping scroll row, which clipped "Consent register" mid-word on a
+   phone with no visible affordance that more tabs existed. Wrapping is the honest answer on a
+   narrow screen: five tabs on two lines beats five tabs one of which is a secret. */
+.officer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+  max-width: 88rem;
+  margin-inline: auto;
+}
+.officer-tabs > button { flex: 0 0 auto; }
+
+/* Android system bars.
+   On a real handset (Motorola edge 60) the bottom action button was clipped by the gesture
+   navigation bar — invisible in a desktop browser, fatal on the device the app is built for. */
+body { padding-top: env(safe-area-inset-top); }
+.a-actions,
+.b-tabbar,
+.officer-tabs ~ * { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+
+/* Grid children default to min-width:auto, so one wide descendant can push a column past the
+   viewport instead of shrinking. Belt and braces against the chip class of bug. */
+.b-main > * { min-width: 0; }
+.b-card { overflow-wrap: anywhere; }
+
+/* The bottom bar's own display rule. It used to be inline, which made it unhideable. */
+.tabbar { display: flex; }
+
+/* ------------------------------------------------------------------ Register B, desk width
+
+   The admin chrome for the District PIU / DL-PACC console. Everything here is inside a
+   `width >= 64rem` query except the hiding of the rail, because below that width the console
+   keeps the phone chrome it was designed with — see AdminShell in components.tsx.
+*/
+
+.adm-side,
+.adm-top {
+  display: none;
+}
+
+@media (width >= 64rem) {
+  .adm {
+    display: grid;
+    grid-template-columns: 17.5rem minmax(0, 1fr);
+    align-items: start;
+    background: var(--color-beige-100);
+  }
+
+  /* The rail is the navigation at this width, so the thumb-zone tab bar is noise. */
+  .adm > .tabbar {
+    display: none;
+  }
+
+  .adm-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    padding: 1.5rem 1rem;
+    background: linear-gradient(180deg, var(--color-plum-900), var(--color-plum-800) 55%, #33102f);
+    color: var(--color-beige-100);
+    overflow-y: auto;
+  }
+
+  .adm-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 0.5rem;
+  }
+
+  .adm-brand strong {
+    display: block;
+    font-size: var(--text-bodysm);
+    letter-spacing: -0.01em;
+  }
+
+  .adm-brand-sub {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--color-plum-300);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .adm-mark {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: none;
+    border-radius: 0.75rem;
+    display: grid;
+    place-items: center;
+    background: var(--color-amber-500);
+    color: var(--color-plum-900);
+    font-size: 1rem;
+  }
+
+  .adm-district {
+    padding: 0.75rem 0.875rem;
+    border-radius: 0.75rem;
+    background: rgb(255 255 255 / 7%);
+    border: 1px solid rgb(255 255 255 / 10%);
+  }
+
+  .adm-district strong {
+    display: block;
+    font-size: var(--text-lead);
+    line-height: 1.2;
+  }
+
+  .adm-district-label {
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-plum-300);
+    margin-bottom: 0.25rem;
+  }
+
+  .adm-nav {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .adm-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 0;
+    border-radius: 0.625rem;
+    background: transparent;
+    color: var(--color-plum-100);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: var(--text-bodysm);
+  }
+
+  .adm-nav-item:hover {
+    background: rgb(255 255 255 / 8%);
+  }
+
+  .adm-nav-item[data-active='true'] {
+    background: var(--color-beige-50);
+    color: var(--color-plum-900);
+    font-weight: 650;
+    box-shadow: inset 3px 0 0 var(--color-amber-500);
+  }
+
+  .adm-nav-item[data-quiet='true'] {
+    color: var(--color-plum-300);
+    font-size: var(--text-label);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .adm-nav-icon {
+    font-size: 1.05rem;
+    width: 1.5rem;
+    flex: none;
+    display: grid;
+    place-items: center;
+    /* Line icons inherit the rail's colour, so the active row's dark-on-cream state needs no
+       second rule — and no emoji renders at a different weight than the text beside it. */
+    color: currentColor;
+    opacity: 0.85;
+  }
+
+  .adm-nav-item[data-active='true'] .adm-nav-icon {
+    opacity: 1;
+    color: var(--color-plum-700);
+  }
+
+  .adm-nav-label {
+    display: block;
+  }
+
+  .adm-nav-hint {
+    display: block;
+    font-size: 0.8125rem;
+    opacity: 0.6;
+    font-weight: 400;
+  }
+
+  .adm-side-foot {
+    margin-top: auto;
+    display: grid;
+    gap: 0.125rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgb(255 255 255 / 12%);
+  }
+
+  .adm-body {
+    min-width: 0;
+    min-height: 100dvh;
+    background: var(--color-beige-50);
+  }
+
+  .adm-top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1.75rem 2rem 1.25rem;
+    border-bottom: 1px solid var(--color-beige-200);
+    background: #fff;
+  }
+
+  .adm-top h1 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--color-plum-900);
+  }
+
+  .adm-top-sub {
+    margin: 0.25rem 0 0;
+    font-size: var(--text-bodysm);
+    color: var(--color-sand-700);
+  }
+
+  .adm-top-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* The console's header is the rail plus this bar, so the phone header and tab strip go. */
+  .adm .b-head,
+  .adm .officer-tabs {
+    display: none;
+  }
+
+  /* Bands span the body rather than the viewport, and lose the phone's full-bleed edge. */
+  .adm .band,
+  .adm .prov-note {
+    margin: 0.875rem 2rem 0;
+    border-radius: 0.625rem;
+  }
+
+  /* Provenance is bookkeeping the jury must be able to open, not a headline. It sits on one
+     line beside the demo band rather than eating a third row of the viewport. */
+  .adm .prov-note {
+    padding: 6px 12px;
+    font-size: var(--text-label);
+  }
+
+  .adm .band {
+    border-bottom: 0;
+    border-left: 4px solid currentColor;
+  }
+
+  /* 12 columns. `data-span` is opt-in; a card without one keeps a third, which is what the
+     phone-era cards were already sized for. */
+  .adm .b-main {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 1rem 2rem 2rem;
+    max-width: 96rem;
+  }
+
+  .adm .b-main > .b-card { grid-column: span 4; }
+  .adm .b-main > .b-card[data-span='3'] { grid-column: span 3; }
+  .adm .b-main > .b-card[data-span='4'] { grid-column: span 4; }
+  .adm .b-main > .b-card[data-span='5'] { grid-column: span 5; }
+  .adm .b-main > .b-card[data-span='6'] { grid-column: span 6; }
+  .adm .b-main > .b-card[data-span='8'] { grid-column: span 8; }
+  .adm .b-main > .b-card[data-span='9'] { grid-column: span 9; }
+  .adm .b-main > .b-card[data-span='12'],
+  .adm .b-main > .b-wide { grid-column: 1 / -1; }
+
+  .adm .b-card {
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 2px rgb(42 14 39 / 5%);
+  }
+
+  .adm .kpi-value { font-size: 2rem; }
+  .adm .kpi { padding: 0.75rem 1rem 0.875rem; }
+
+  .adm .kpi-row { grid-column: 1 / -1; }
+}
+
+/* ------------------------------------------------------------------ KPI tiles */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+}
+
+.kpi {
+  background: #fff;
+  border: 1px solid var(--color-beige-200);
+  border-top: 3px solid var(--color-plum-600);
+  border-radius: 0.875rem;
+  padding: 0.875rem 1rem 1rem;
+  display: grid;
+  gap: 0.25rem;
+  align-content: start;
+}
+
+.kpi[data-tone='ok'] { border-top-color: var(--color-teal-600); }
+.kpi[data-tone='warn'] { border-top-color: var(--color-amber-500); }
+.kpi[data-tone='bad'] { border-top-color: var(--color-rose-600); }
+
+.kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.kpi-label {
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-sand-700);
+  font-weight: 650;
+}
+
+.kpi-icon { display: grid; place-items: center; color: var(--color-sand-700); opacity: 0.7; }
+
+.kpi-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-plum-800);
+}
+
+.kpi[data-tone='ok'] .kpi-value { color: var(--color-teal-600); }
+.kpi[data-tone='warn'] .kpi-value { color: var(--color-amber-600); }
+.kpi[data-tone='bad'] .kpi-value { color: var(--color-rose-600); }
+
+.kpi-note {
+  font-size: var(--text-label);
+  color: var(--color-sand-700);
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------------ funnel */
+
+.funnel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.75rem;
+  align-items: end;
+  min-height: 11rem;
+}
+
+.funnel-step {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 0.375rem;
+  height: 9.5rem;
+  align-items: end;
+  text-align: center;
+}
+
+.funnel-bar {
+  border-radius: 0.5rem 0.5rem 0 0;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding-top: 0.375rem;
+  color: #fff;
+  font-weight: 700;
+  font-size: var(--text-bodysm);
+  align-self: end;
+}
+
+.funnel-label {
+  font-size: 0.8125rem;
+  color: var(--color-sand-900);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.funnel-drop {
+  font-size: 0.8125rem;
+  color: var(--color-sand-700);
 }

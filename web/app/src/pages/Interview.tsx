@@ -16,7 +16,8 @@ import {
   type ScoredQualification,
   type SessionState,
 } from '@rc097/core';
-import { Band, Beads, Mic, Options, PinPad, Speak, StatusChip, useMemoAsync } from '../components';
+import { Band, Beads, Mic, Options, PinPad, Speak, StatusChip, useMemoAsync, useRole } from '../components';
+import { isOfficer } from '../lib/role';
 import { useInterview } from '../lib/interview';
 import { openStore } from '../lib/db';
 import { resolveIdentity, sendOtp, serverConfigured, verifyOtp, type ResumableSummary } from '../lib/supabase';
@@ -175,8 +176,11 @@ function PhoneGate({
         }}
       />
       {notice && <div style={{ background: 'var(--color-amber-100)', color: '#7a4510', padding: 12, borderRadius: 10, fontSize: 'var(--text-bodysm)' }}>{notice}</div>}
-      <p className="muted" style={{ color: 'var(--color-plum-300)' }}>
-        The number is verified by SMS and hashed on the server — the raw number is never stored.
+      {/* Was English, and said "hashed on the server". The person reading this screen cannot read
+          this screen — and "hashed" is not a promise anyone can act on. Say what she'd want to
+          know, in her language: the number is not kept and nobody is called. */}
+      <p className="muted" lang="hi" style={{ color: 'var(--color-plum-300)' }}>
+        आपका नंबर सिर्फ़ पहचान के लिए है। हम इसे सँभालकर नहीं रखते, और न ही किसी को देते हैं।
       </p>
     </Screen>
   );
@@ -318,7 +322,9 @@ function Stage({ iv }: { iv: ReturnType<typeof useInterview> }) {
 
   const langPick = s.state === 'LANG_SELECT';
   const options: ExpectOption[] = langPick
-    ? SPOKEN_LOCALES.map((l, i) => ({ id: l, label: LOCALE_LABEL[l], labelLocal: LOCALE_LABEL[l], dtmf: String(i + 1), icon: '🗣️' }))
+    // No icon: the same speech-balloon beside all eight rows says nothing the label does not
+    // already say, and a row of identical glyphs reads as a rendering fault. The script IS the icon.
+    ? SPOKEN_LOCALES.map((l, i) => ({ id: l, label: LOCALE_LABEL[l], labelLocal: LOCALE_LABEL[l], dtmf: String(i + 1) }))
     : (iv.expect.options ?? []);
 
   const wantsPin = iv.expect.kind === 'pin';
@@ -326,13 +332,17 @@ function Stage({ iv }: { iv: ReturnType<typeof useInterview> }) {
 
   return (
     <div className="a-screen">
-      {!navigator.onLine && <Band tone="warn">Offline — this interview still works. {pending > 0 ? `${pending} waiting to sync.` : 'Nothing is lost.'}</Band>}
-      {iv.asrDegraded && (
-        <Band tone="warn">
-          No speech model exists for {LOCALE_LABEL[s.locale]}. Recognition runs on the Hindi model and
-          the error is absorbed by the trade lexicon — accuracy is measured, not claimed.
-        </Band>
-      )}
+      {/* One band slot, not loose siblings: at desk width the screen is a three-row grid and two
+          unwrapped bands would land in two different rows of it. */}
+      <div className="a-bands">
+        {!navigator.onLine && <Band tone="warn">Offline — this interview still works. {pending > 0 ? `${pending} waiting to sync.` : 'Nothing is lost.'}</Band>}
+        {iv.asrDegraded && (
+          <Band tone="warn">
+            No speech model exists for {LOCALE_LABEL[s.locale]}. Recognition runs on the Hindi model and
+            the error is absorbed by the trade lexicon — accuracy is measured, not claimed.
+          </Band>
+        )}
+      </div>
 
       <div className="a-stage">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -380,7 +390,7 @@ function Stage({ iv }: { iv: ReturnType<typeof useInterview> }) {
         {wantsPin && <PinPad label="चार अंक दबाइए" onDone={(pin) => void iv.sendDtmf(pin)} />}
 
         {wantsOpen && !wantsPin && (
-          <div style={{ marginTop: 'auto', display: 'grid', gap: 12 }}>
+          <div className="a-answer">
             <Mic
               state={iv.mic}
               onToggle={() => void iv.listen()}
@@ -418,8 +428,20 @@ function Stage({ iv }: { iv: ReturnType<typeof useInterview> }) {
         <Options options={options} layout={iv.expect.layout ?? (options.length > 3 ? 'grid' : 'stack')} locale={s.locale} onPick={(id) => void iv.choose(id)} />
       )}
 
+      {/* Some turns speak a line and expect nothing back — the readback intro is one of them. On a
+          phone call the next turn arrives by itself, as silence; in the app nothing arrives, and
+          the interview stopped dead at 7/7 with no control on screen. The FSM ignores what this
+          sends, so any utterance will do; what matters is that there is something to press. */}
+      {iv.expect.kind === 'none' && options.length === 0 && !wantsPin && !wantsOpen && (
+        <div className="a-actions">
+          <button type="button" className="a-btn" data-variant="primary" onClick={() => void iv.choose('continue')}>
+            आगे बढ़िए
+          </button>
+        </div>
+      )}
+
       {iv.say.length > 0 && (
-        <div style={{ padding: '8px 16px 16px', background: 'var(--color-beige-100)', display: 'flex', gap: 8, justifyContent: 'center' }}>
+        <div className="a-repeat" style={{ padding: '8px 16px 16px', background: 'var(--color-beige-100)', display: 'flex', gap: 8, justifyContent: 'center' }}>
           <button type="button" className="b-btn" data-variant="ghost" onClick={iv.repeat}>
             🔁 दोबारा सुनिए
           </button>
@@ -432,6 +454,7 @@ function Stage({ iv }: { iv: ReturnType<typeof useInterview> }) {
 // ---------------------------------------------------------------------------- result
 
 function RecoCard({ r, locale, rank }: { r: ScoredQualification; locale: Locale; rank: number }) {
+  const officer = isOfficer(useRole());
   const q = r.qualification;
   const near = r.gate.bucket === 'NEAR_MISS';
   const months = q.notionalHours ? Math.max(1, Math.round(q.notionalHours / 150)) : null;
@@ -474,48 +497,69 @@ function RecoCard({ r, locale, rank }: { r: ScoredQualification; locale: Locale;
         </div>
       )}
 
-      {/* Provenance, on the card, not in a footnote. A prototype row must never look official. */}
-      {q.qpCode ? (
-        <div className="mono muted">QP {q.qpCode}</div>
-      ) : (
-        <div className="mono" style={{ color: 'var(--color-amber-600)' }} title="decisions.md: no invented QP codes, ever.">
-          QP code pending official NQR import
-        </div>
+      {/* Provenance is for whoever has to defend the row in an audit — an officer. A woman
+          being told what to train in does not need to read "QP code pending NQR import". */}
+      {officer && (
+        <>
+          {q.qpCode ? (
+            <div className="mono muted">QP {q.qpCode}</div>
+          ) : (
+            <div className="mono" style={{ color: 'var(--color-amber-600)' }} title="decisions.md: no invented QP codes, ever.">
+              QP code pending official NQR import
+            </div>
+          )}
+          <details>
+            <summary style={{ cursor: 'pointer', fontSize: 'var(--text-label)' }}>Why this one?</summary>
+            <p className="muted" style={{ marginTop: 6 }}>{r.explain.officer}</p>
+          </details>
+        </>
       )}
-
-      <details>
-        <summary style={{ cursor: 'pointer', fontSize: 'var(--text-label)' }}>Why this one? (officer view)</summary>
-        <p className="muted" style={{ marginTop: 6 }}>{r.explain.officer}</p>
-      </details>
     </article>
   );
 }
 
 function Result({ iv }: { iv: ReturnType<typeof useInterview> }) {
+  const officer = isOfficer(useRole());
   const s = iv.session!;
   const reco = iv.recommendation;
   const answers = ([1, 2, 3, 4, 5, 6, 7] as FieldNo[]).map((n) => s.answers[n]).filter(Boolean);
 
+  // Every recommendation's sentence is spoken twice on this screen: once in the FSM's `say` list
+  // and again on the card it belongs to, which has its own play button. On a phone that is two
+  // scrolls of the same sentence; on a desk screen it is the whole first page. Keep the lines the
+  // cards do not carry — the opening count, the near-miss lead-in, the next step, the SMS offer.
+  const onTheCards = new Set(
+    [...(reco?.top ?? []), ...(reco?.nearMiss ?? [])].map((r) => r.explain.beneficiary),
+  );
+
   return (
-    <div className="a-screen">
-      {reco?.containsPrototypeData && (
-        <Band tone="warn">
-          Prototype course catalogue — QP codes are NULL until the official NQR import runs. Nothing
-          here is labelled as an official qualification.
-        </Band>
-      )}
+    <div className="a-screen a-result">
+      <div className="a-bands">
+        {reco?.containsPrototypeData && officer && (
+          <Band tone="warn">
+            Prototype course catalogue — QP codes are NULL until the official NQR import runs. Nothing
+            here is labelled as an official qualification.
+          </Band>
+        )}
+      </div>
 
       <div className="a-stage">
         <h1 className="a-question" lang={s.locale}>
           {reco && reco.top.length > 0 ? 'आपके लिए ये रास्ते निकले' : 'अभी पूरी जानकारी नहीं है'}
         </h1>
 
-        {iv.say.map((line, i) =>
-          'text' in line && line.text ? (
-            <Speak key={i} locale={s.locale} promptId={line.kind === 'prerendered' ? line.id : undefined} text={line.text} />
-          ) : null,
-        )}
+        {/* Two blocks, not seven loose children: at desk width the spoken script and the pathways
+            it describes are two columns, and a grid cannot put a run of short lines beside a run
+            of tall cards unless each run is one item. */}
+        <div className="a-script">
+          {iv.say.map((line, i) =>
+            'text' in line && line.text && !onTheCards.has(line.text) ? (
+              <Speak key={i} locale={s.locale} promptId={line.kind === 'prerendered' ? line.id : undefined} text={line.text} />
+            ) : null,
+          )}
+        </div>
 
+        <div className="a-paths">
         <div style={{ display: 'grid', gap: 12 }}>
           {reco?.top.map((r, i) => (
             <RecoCard key={r.qualification.localId} r={r} locale={s.locale} rank={i + 1} />
@@ -573,6 +617,7 @@ function Result({ iv }: { iv: ReturnType<typeof useInterview> }) {
             answer. Only the confirmed values remain.
           </p>
         </details>
+        </div>
       </div>
 
       <div className="a-actions">

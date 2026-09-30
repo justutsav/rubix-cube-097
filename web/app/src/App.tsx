@@ -5,11 +5,14 @@ import Login from './pages/Login';
 import Interview from './pages/Interview';
 import Chat from './pages/Chat';
 import MyPlan from './pages/MyPlan';
-import Field from './pages/Field';
+import Demo from './pages/Demo';
+import Onboarding from './pages/Onboarding';
+import Outcomes from './pages/Outcomes';
+import State from './pages/State';
 import Officer from './pages/Officer';
 import Settings from './pages/Settings';
 import { RoleContext } from './components';
-import { getRole, type Role } from './lib/role';
+import { getRole, isOfficer, type Role } from './lib/role';
 import { startSyncLoop } from './lib/supabase';
 
 /**
@@ -48,12 +51,17 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home role={role} onRole={setRole} />} />
           <Route path="/home" element={<Home role={role} onRole={setRole} />} />
+          <Route path="/demo" element={<Demo onRole={setRole} />} />
+          <Route path="/welcome" element={<Onboarding onRole={setRole} />} />
           <Route path="/login" element={<Login />} />
           <Route path="/interview" element={<Interview />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/me" element={<MyPlan />} />
-          <Route path="/field" element={<Field />} />
-          <Route path="/officer" element={<Officer />} />
+          {/* The officer consoles list other people's answers. Reaching them by typing a hash
+              must not work either, so the guard is on the route, not just on the tab bar. */}
+          <Route path="/outcomes" element={role === 'district_officer' ? <Outcomes /> : <Navigate to="/" replace />} />
+          <Route path="/officer" element={isOfficer(role) ? <Officer /> : <Navigate to="/" replace />} />
+          <Route path="/state" element={role === 'state_officer' ? <State /> : <Navigate to="/" replace />} />
           <Route path="/settings" element={<Settings role={role} onRole={setRole} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

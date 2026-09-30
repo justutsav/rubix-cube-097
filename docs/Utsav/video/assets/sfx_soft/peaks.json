@@ -1,0 +1,15 @@
+{
+  "chime.wav": 0.0126,
+  "click.wav": 0.0037,
+  "confirm.wav": 0.0112,
+  "drag.wav": 0.1324,
+  "keypad.wav": 0.0042,
+  "notify.wav": 0.01,
+  "pop.wav": 0.004,
+  "ring.wav": 0.0461,
+  "send.wav": 0.0104,
+  "slide.wav": 0.095,
+  "tick.wav": 0.0031,
+  "whoosh.wav": 0.1736,
+  "whoosh_lo.wav": 0.2301
+}
