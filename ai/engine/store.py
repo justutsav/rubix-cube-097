@@ -2,11 +2,10 @@
 
 Answers hang off the person (beneficiary), not the call, so a dropped call loses
 nothing. Stored: confirmed/normalised values only. Never stored: audio, transcripts,
-raw phone numbers, raw PINs.
+raw phone numbers.
 """
 
 import datetime as dt
-import hashlib
 import json
 import os
 import sqlite3
@@ -23,7 +22,6 @@ create table if not exists beneficiary (
   ordinal integer not null,
   district text,
   consent_state text not null default 'NONE',   -- NONE|GIVEN|GUARDIAN_GIVEN|GUARDIAN_PENDING|WITHDRAWN
-  pin_hash text,
   created_at text not null,
   unique (phone_hash, ordinal)
 );
@@ -55,6 +53,20 @@ create table if not exists consent_event (
 create table if not exists callback_request (
   id text primary key, beneficiary_id text not null, session_id text not null,
   at_state text not null, status text not null default 'OPEN', created_at text not null
+);
+create table if not exists flag (
+  id text primary key, session_id text, phone_hash text, kind text not null,
+  at_state text, created_at text not null
+);                                               -- guardrail events; never what was said
+create table if not exists concern (
+  id text primary key, beneficiary_id text not null, session_id text not null, topic text not null,
+  at_state text, created_at text not null
+);                                               -- a problem the caller shared: topic only, never the words
+create table if not exists insight (
+  id text primary key, beneficiary_id text not null, data text not null, created_at text not null
+);                                               -- the reasoning behind a recommendation, for the district worker
+create table if not exists ai_usage (
+  day text primary key, calls integer not null
 );
 create table if not exists recommendation (
   id text primary key, beneficiary_id text not null, ranked text not null,
@@ -93,8 +105,8 @@ class Store:
         return bid
 
     def resumable(self, phone_hash):
-        """Latest person on this phone who consented and set a PIN (the PIN gates resume)."""
-        return self.q("""select * from beneficiary where phone_hash=? and pin_hash is not null
+        """Latest person on this phone who consented: the one a redial may continue."""
+        return self.q("""select * from beneficiary where phone_hash=?
                          and consent_state in ('GIVEN','GUARDIAN_GIVEN') order by ordinal desc limit 1""",
                       phone_hash).fetchone()
 
@@ -104,11 +116,6 @@ class Store:
     def set_beneficiary(self, bid, **cols):
         for k, v in cols.items():
             self.q(f"update beneficiary set {k}=? where id=?", v, bid)
-
-    @staticmethod
-    def pin_hash(bid, pin):
-        pepper = os.environ.get("PHONE_PEPPER", "dev-only-pepper")
-        return hashlib.sha256(f"{pepper}:{bid}:{pin}".encode()).hexdigest()
 
     def consent(self, bid, kind, channel, script_version="consent.hi.v1"):
         self.q("insert into consent_event values(?,?,?,?,?,?)",
@@ -149,6 +156,43 @@ class Store:
         """Caller pressed the help key: a district worker should call them."""
         self.q("insert into callback_request(id,beneficiary_id,session_id,at_state,created_at) values(?,?,?,?,?)",
                str(uuid.uuid4()), bid, session_id, at_state, now())
+
+    def concern(self, bid, session_id, topic, at_state):
+        self.q("insert into concern values(?,?,?,?,?,?)", str(uuid.uuid4()), bid, session_id, topic,
+               at_state, now())
+
+    def concerns(self, bid) -> list:
+        return [r[0] for r in self.q("select distinct topic from concern where beneficiary_id=?", bid)]
+
+    def save_insight(self, bid, data):
+        self.q("insert into insight values(?,?,?,?)", str(uuid.uuid4()), bid,
+               json.dumps(data, ensure_ascii=False), now())
+
+    # --- guardrails ------------------------------------------------------------------
+
+    def flag(self, session, kind, at_state=None):
+        """A guardrail fired (injection, abuse, a cap…). Counts only: no words are stored."""
+        self.q("insert into flag values(?,?,?,?,?,?)", str(uuid.uuid4()), session["id"],
+               session["phone_hash"], kind, at_state, now())
+
+    def flag_counts(self, days=1):
+        since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat(timespec="seconds")
+        return {r[0]: r[1] for r in self.q(
+            "select kind, count(*) from flag where created_at >= ? group by kind", since)}
+
+    def calls_today(self, phone_hash) -> int:
+        today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        return self.q("select count(*) from session where phone_hash=? and started_at >= ?",
+                      phone_hash, today).fetchone()[0]
+
+    def take_ai_budget(self, limit) -> bool:
+        """One AI call from today's budget. False once today's limit is spent."""
+        day = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        row = self.q("select calls from ai_usage where day=?", day).fetchone()
+        if row and row[0] >= limit:
+            return False
+        self.q("insert into ai_usage values(?,1) on conflict(day) do update set calls=calls+1", day)
+        return True
 
     def save_recommendation(self, bid, result, ranked):
         self.q("insert into recommendation values(?,?,?,?,?,?,?)", str(uuid.uuid4()), bid,

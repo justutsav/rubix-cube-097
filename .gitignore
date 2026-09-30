@@ -70,3 +70,6 @@ docs/Utsav/video/**/*.mp4
 docs/Utsav/video/**/*.wav
 video/public/**/*.wav
 video/out/
+
+# scripts/ivr.sh: pids, logs, test DB, tunnel URL
+.run/

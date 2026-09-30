@@ -1,4 +1,3 @@
-import json
 
 import pytest
 
@@ -6,14 +5,14 @@ from conftest import Caller
 from engine import extract as x
 from engine import flow, prompts
 from engine.server import STORE
-from test_flow import consent_and_pin
+from test_flow import consent
 
 
 # --- help key ------------------------------------------------------------------
 
 def test_hash_queues_a_callback_and_repeats_the_question(caller):
     c = caller
-    consent_and_pin(c)
+    consent(c)
     c.key("1")                                                   # q0 by key -> q1
     j = c.key("#")
     assert c.ids(j) == ["help_queued", "q1"]                     # then carries on
@@ -24,9 +23,9 @@ def test_hash_queues_a_callback_and_repeats_the_question(caller):
 
 def test_hash_during_confirm_repeats_the_confirm(caller):
     c = caller
-    consent_and_pin(c)
+    consent(c)
     c.say("सीतापुर")
-    assert c.ids(c.key("#")) == ["help_queued", "is_right"]
+    assert c.ids(c.key("#")) == ["help_queued", "is_right_short"]   # the long form was just heard
 
 
 # --- language choice -------------------------------------------------------------
@@ -40,11 +39,11 @@ def two_langs(monkeypatch):
 def test_language_menu_sets_the_call_language(caller, two_langs):
     c = caller
     j = c.turn("opened")
-    assert c.ids(j) == ["lang_select"]
+    assert c.ids(j) == ["lang_pick.hi", "lang_pick.bho"]        # each line in its own language
     j = c.key("2")
     assert j["lang"] == "bho" and c.ids(j) == ["welcome", "consent"]
     j = c.say("हँ जी")                                           # Bhojpuri yes
-    assert j["lang"] == "bho" and c.ids(j) == ["pin_set"]        # language survives each step
+    assert j["lang"] == "bho" and c.ids(j) == ["ack", "q0"]      # language survives each step
 
 
 def test_no_choice_defaults_to_the_first_language(caller, two_langs):
@@ -76,15 +75,11 @@ def test_bhojpuri_forms_understood(fn, text, want):
 
 def test_nothing_sensitive_is_stored(client):
     c = Caller(client)
-    consent_and_pin(c, "7391")
+    consent(c)
     said = "मैं आठवीं तक पढ़ी हूँ"
     c.key("1")
     c.say(said)
     c.say("हाँ")
     dump = "\n".join(STORE.db.iterdump())
     assert said not in dump and "पढ़ी" not in dump               # no transcripts, only the value
-    b = STORE.q("select * from beneficiary where phone_hash=?", c.phone).fetchone()
-    assert b["pin_hash"] != "7391" and len(b["pin_hash"]) == 64  # PIN only as a salted hash
-    for s in STORE.q("select state from session where phone_hash=?", c.phone):
-        assert "pin" not in json.loads(s[0])                     # no half-typed PIN left behind
     assert not any(t in dump for t in ("audio", "wav", "recording"))  # no audio columns at all

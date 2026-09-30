@@ -12,8 +12,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 nqr = ["httpx", "openpyxl"]           # refresh the NQR snapshot (tools/import_nqr.py)
-tts = ["gtts", "miniaudio"]           # dev text-to-speech, no account
+tts = ["gtts", "miniaudio"]           # gTTS fallback voice, no account
+piper = ["piper-tts==1.8.0", "miniaudio"]   # default voice: free, offline
 vosk = ["vosk==0.3.44"]              # offline speech-to-text, no account; 0.3.45 has no macOS wheel
+whisper = ["faster-whisper"]          # offline speech-to-text on the CPU (CTranslate2 int8)
+local = ["onnx-asr[cpu,hub]", "tokenizers"]   # CPU only: IndicConformer speech (hi/bn/or) + e5 matcher
 
 [build-system]
 requires = ["setuptools>=68"]

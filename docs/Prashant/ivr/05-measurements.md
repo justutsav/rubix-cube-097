@@ -10,6 +10,37 @@ within each section. Synthetic voice = the engine's gTTS voice: good for compari
 (38 answers across all fields) · speech-to-text Vosk small Hindi (offline) · line conditions from
 `tools/phone_line.py` (300–3400 Hz band, G.711 mu-law, white noise, lost 20 ms packets).
 
+### 2026-09-27, local IndicConformer (AI4Bharat, on the laptop CPU) — same 38 answers
+
+Scorer fix first: since open answers a district is stored as `{"id": "GAYA", …}` and the tool
+compared it to `"GAYA"`, so every district answer counted as a miss (fixed in `accuracy.py`).
+The Vosk/Sarvam tables below predate open answers and are not affected.
+
+| Line condition | Answer understood, int8 model | Full precision (default) | Time p50 (full) |
+|---|---|---|---|
+| clean | 97% (37/38) | — | ~38 ms |
+| phone | 100% (38/38) | — | ~38 ms |
+| phone+noise20 | 79% (30/38) | 95% (36/38) | 37 ms |
+| phone+noise10 | 74% (28/38) | 76% (29/38) | 38 ms |
+| phone+loss5 | 100% (38/38) | — | ~38 ms |
+| phone+noise10+loss5 | 71% (27/38) | 84% (32/38) | 38 ms |
+
+**Reading it:** on clean and phone lines local equals or beats Sarvam (97–100%) and is ~8×
+faster (no network). In heavy noise it is below Sarvam (84% vs 89% worst line; 76% vs 92% at
+10 dB). Full precision was both better in noise *and* faster than int8 on the M5, for ~360 MB
+more per language, so it is the default. Misses in noise are the model; misses on clean lines
+were spelling variants now in the word list ("खेतीबारी", "सिलई").
+
+**Bengali and Odia** have no recordings yet. Voice → speech-to-text round trip on 10 prompts
+each (text match after both): Bengali 0.93, Odia 0.87, Hindi 0.90 — the voices are intelligible
+to a speech model, and the models hear their language. Short single words match worst.
+
+**Local AI helper** (`ai/tools/eval_local_ai.py`, 46 sentences in hi/bn/or the word list
+misses): local matcher 84%, p50 2 ms, p95 ~100 ms · Sarvam 89%, p50 ~240 ms · wrong kind stored
+as an answer: 0 for both. Red team through the flow with the local helper: 50/50.
+
+**Memory** (engine, all three languages, every model loaded): ~2.4 GB resident.
+
 ### 2026-09-26, Vosk vs Sarvam on the same audio (lexicon 2026-09-26.2)
 
 Same 38 answers, same noise (seeded per answer, reproducible), same word list; only
@@ -118,3 +149,58 @@ apology, progress is saved). Cloud speech-to-text moves that load off the box.
 | opened | 170 | 28 ms | 51 ms | 28 ms | 51 ms | 67 ms |
 
 Calls: 1 · turns: 1822 · 'hmm' filler played: 337 · barge-ins: 0 · engine failures: 130
+
+## Public tunnel (Cloudflare quick tunnel, no account)
+
+### 2026-09-26, fake Exotel over the internet: laptop → Cloudflare edge → tunnel → adapter
+
+| Check | Result |
+|---|---|
+| `GET /health` through the tunnel (QUIC, after DNS settled) | 6/6 OK, 0.2–0.9 s |
+| Wrong `?token=` | rejected, HTTP 403, logged |
+| Full interview (2 spoken answers + keys) | completed, 17 turns, result spoken |
+| Silence after a spoken answer | p50 609 ms (local was ~330 ms: the tunnel adds ~280 ms round trip) |
+
+Flakiness seen, all on the tunnel side, none in our code: the first minutes after start saw
+0.5–12 s responses and resets; `--protocol http2` gave HTTP 530 (edge could not reach the
+tunnel) — stay on the default QUIC; one call early on dropped at ~30 s. A quick tunnel is fine
+for the first Exotel test; for demos use a named tunnel or ngrok's free static domain.
+
+## Real calls through Exotel (trial account, ExoPhone 080…, Cloudflare quick tunnel, Sarvam)
+
+### 2026-09-26, first real calls from a mobile
+
+| Call | What happened | Cause | Fixed in |
+|---|---|---|---|
+| 1 | Silence | Exotel strips `?token=` from the Voicebot URL and sends it as `start.custom_parameters`; every connection was rejected | `8c37682` |
+| 2 | Prompts cut to fragments ("hum hum"), answers not understood | Barge-in at 120 ms fired on line noise/echo on 22 of 23 turns | `85d8d42` (400 ms) |
+| 3 | 27 turns, reached the last question; short answers failed | Sarvam ends every transcript with "।", which the matcher kept, so `गया।` ≠ `गया`; "bachelors" unknown; my engine restart ended the call on the last key | `85d8d42` + this commit |
+
+Call 3, per turn: engine 400–840 ms after a spoken answer (Sarvam + understanding), 2–11 ms
+after a key. Exotel's format: `{'encoding': 'base64', 'sample_rate': '8000'}`. Sarvam heard every
+answer correctly; every miss was in our matching.
+
+Replaying call 3's saved clips through the fixed engine: 9 of 10 real answers understood
+(`गया।`, `बैचलर्स`, `खेती।`, `5 साल।`, `ट्रैक्टर`, `नौकरी`, `हाँ।` …); the miss, "आने जाने में
+दिक्कत है", is fixed in this commit, as are: a plain "हाँ" to the difficulty question opening
+the menu, no barge-in in the first 4 s (Exotel's "this call is being recorded" cut the
+welcome), and the "hmm" filler only after 1 s (Sarvam often takes 0.7–0.8 s).
+
+Call 4 (after those fixes): "दसवीं", "इलेक्ट्रिशियन", "हाँ" understood first time. New findings:
+11 of 22 turns were barge-ins on "हाँ जी"/"अच्छा" said while listening, so questions were cut
+and answered blind → barge-in now needs 900 ms of speech. "एक बार वापस से बोलना" had no
+meaning → a repeat command that re-asks without using a try. A 9 s answer made Sarvam time out,
+Vosk fell back, and the adapter's 1.5 s engine wait expired first → call ended with "sorry"
+→ the adapter now waits 4 s (the filler covers it). Credits after 4 incoming calls (~8 min):
+unchanged at 500.
+
+### 2026-09-26, softphone and more Exotel calls (after the fixes above)
+
+Two softphone calls (one to the result, 39 turns) and four Exotel calls from other people
+(one to the result, 28 turns). Engine after a spoken answer, softphone: p50 570 ms, p95 810 ms;
+7 barge-ins in 52 turns (was 11 in 22). Understood first time: गया, बैचलर्स, बीटेक डिग्री,
+दसवीं, 5वीं, खेती, हम लोग किसान हैं, दस साल, पंद्रह साल, बिजली मिस्त्री, अपना काम, कुछ नहीं
+करते हैं. Remaining clumsiness, fixed in `6612969`: bare "हाँ" to open questions (→ menu),
+"नहीं" to "any difficulty?" double negative (→ accepted), spoken "एक/दो" (→ yes/no), spoken PIN,
+"गया" read back as "गया ज़िला", softphone reusing one number (→ random). Not fixed on purpose:
+"इंजीनियरिंग"/"इंजीनियर बनना है" (no engineering courses at NSQF ≤ 4; the menu handles it).

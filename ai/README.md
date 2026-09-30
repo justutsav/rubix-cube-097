@@ -8,8 +8,13 @@ Works the same on Linux, Windows and macOS. Needs only [uv](https://docs.astral.
 
 ## Run
 
+One-time: the free local voice (~60 MB, no account):
+
 ```bash
-uv run --extra tts uvicorn engine.server:app --port 8001
+uv run python tools/get_piper_voice.py
+```
+```bash
+uv run --extra tts --extra piper uvicorn engine.server:app --port 8001
 ```
 
 With free offline speech-to-text (no account, ~80 MB model, one-time download):
@@ -40,6 +45,8 @@ uv run --extra dev pytest -q
 | `data/lexicon.json` | Spoken words → trades, education, yes/no… | authored; no course codes |
 | `data/weights.json` | Ranking weights, versioned | authored judgement calls |
 | `data/districts.json` | Pilot districts for Q0 | **placeholder** choice |
+| `data/facts_hi.json` | Pre-written answers to side questions; the AI picks an id, never writes words | PM-AJAY guidelines, via `docs/Utsav/research/01-the-customer.md` |
+| `data/guardrails.json` | Abuse and injection word lists, checked before the AI | authored |
 
 Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 
@@ -48,11 +55,19 @@ Refresh the register: `uv run --extra nqr python tools/import_nqr.py`
 | Name | Default | |
 |---|---|---|
 | `ENGINE_DB` | `ai/.storage/engine.db` | SQLite file (`:memory:` for tests) |
-| `PHONE_PEPPER` | `dev-only-pepper` | secret for PIN hashes; same value as the IVR adapter |
+| `PHONE_PEPPER` | `dev-only-pepper` | secret for phone-number hashes; same value as the IVR adapter |
 | `ASR_PROVIDER` | `none` | `none` = keypad menus only · `vosk` = offline · `sarvam` = cloud, falls back to Vosk then keypad |
 | `ASR_TIMEOUT_MS` | `2000` | Sarvam slower than this → fall back |
 | `SARVAM_API_KEY` | — | put it in `ai/.env` (gitignored); read at start-up |
 | `SARVAM_STT_MODEL` | `saarika:v2.5` | |
-| `TTS_PROVIDER` | `gtts` | `gtts` = dev voice · `sarvam` = Bulbul, falls back to gtts |
+| `TTS_PROVIDER` | `piper` | `piper` = free, offline, local (default) · `sarvam` = Bulbul (paid) · `gtts` = dev |
+| `PIPER_VOICE` / `PIPER_LENGTH_SCALE` | `hi_IN-priyamvada-medium` / `0.85` | voice from `tools/get_piper_voice.py`; lower = faster |
 | `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` | `bulbul:v3` / Sarvam default | |
-| `LLM_PROVIDER` | `none` | AI helper for unmatched answers (needs an account) |
+| `LLM_PROVIDER` | `sarvam` if `SARVAM_API_KEY` is set, else `none` | AI helper for off-script answers and side questions |
+| `SARVAM_LLM_MODEL` | `sarvam-105b-conversations` | JSON mode, fast |
+| `LLM_MAX_PER_CALL` | `6` | cost cap: AI calls per phone call |
+| `LLM_TIMEOUT_MS` | `2500` | slower → carry on without it |
+| `SARVAM_TTS_PACE` | `1.0` | speaking speed of the Sarvam voice |
+| `MAX_ASIDES_PER_CALL` / `MAX_CALLS_PER_DAY` / `LLM_DAILY_BUDGET` | `4` / `5` / `500` | guardrail caps (see `docs/Prashant/ivr/07-guardrails.md`) |
+| `ENGINE_LANGS` | `hi` | e.g. `hi,bho` asks for the language at call start (Bhojpuri is a draft) |
+| `ENGINE_LOG_TRANSCRIPTS` | unset | `1` logs what was heard per answer — **test calls only** |

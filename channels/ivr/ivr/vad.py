@@ -18,10 +18,10 @@ def _env(name, default):
 
 class Endpointer:
     def __init__(self):
-        self.vad = webrtcvad.Vad(_env("VAD_AGGRESSIVENESS", 2))
-        self.silence_frames = _env("ENDPOINT_SILENCE_MS", 240) // 20
+        self.vad = webrtcvad.Vad(_env("VAD_AGGRESSIVENESS", 3))        # 2 took background noise for speech on real calls
+        self.silence_frames = _env("ENDPOINT_SILENCE_MS", 500) // 20   # 240 cut mid-sentence; 800 waited too long on noisy lines
         self.min_frames = _env("MIN_UTTERANCE_MS", 250) // 20
-        self.max_frames = _env("MAX_UTTERANCE_MS", 15000) // 20
+        self.max_frames = _env("MAX_UTTERANCE_MS", 6000) // 20        # answers are short; noise must not hold the line
         self.reset()
 
     def reset(self):

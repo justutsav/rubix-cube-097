@@ -33,6 +33,12 @@ def weights() -> dict:
 
 
 @lru_cache(maxsize=1)
+def sectors() -> list:
+    """Every NQR sector name, for mapping a job the caller named in their own words."""
+    return sorted({r["sector"] for r in register()["rows"] if r["sector"]})
+
+
+@lru_cache(maxsize=1)
 def concepts() -> dict:
     return {c["id"]: c for c in lexicon()["trades"]}
 
@@ -79,11 +85,14 @@ def _kw(words, text):
 def _hit(concept_id, q, text=None):
     """How strongly a course is about a trade. Title/occupation beat description:
     a fitness course 'tailored for athletes' is not a tailoring course."""
-    c = concepts().get(concept_id)
+    c = concept_id if isinstance(concept_id, dict) else concepts().get(concept_id)   # custom job: its own sectors
     if not c:
         return 0.0
     head = " ".join(filter(None, (q["title"], q["occupation"]))).lower()
     sec = q["sector"] in c["sectors"]
+    if c.get("id") == "CUSTOM":
+        # the AI's words ("video editing") must still find "Video Editor": match 4-letter stems
+        c = dict(c, keywords=sorted({w[:4] for k in c["keywords"] for w in k.split() if len(w) >= 4}))
     if _kw(c["keywords"], head):
         return 1.0 if sec else 0.8
     if sec:
@@ -186,39 +195,55 @@ def months(hours):
     return max(1, math.ceil((hours or 0) / 132)) if hours else None
 
 
-def reason(x: Pick, p: Profile) -> str:
+def reason_key(x: Pick) -> str:
     f = x.factors
     if f.get("skill_transfer", 0) >= 0.6:
-        return "यह आपके परिवार या अभी के काम से जुड़ा है"
+        return "skill_transfer"
     if f.get("aspiration", 0) >= 0.6:
-        return "यह वही काम है जो आप सीखना चाहते हैं"
+        return "aspiration"
     if f.get("disability_sector"):
-        return "यह कोर्स दिव्यांग साथियों के लिए बनाया गया है"
+        return "disability_sector"
     if f.get("local_demand", 0) >= 0.6:
-        return "आपके इलाके में इस काम की माँग है"
-    return "यह आपकी पढ़ाई और अनुभव के हिसाब से सही है"
+        return "local_demand"
+    return "fit"
 
 
-def spoken(result: dict) -> str:
-    """The recommendation tail, as one text for TTS. Titles stay as the register spells them."""
+def reason(x: Pick, p: Profile, lang: str = "hi") -> str:
+    from .prompts import pack
+    return pack(lang)["reasons"][reason_key(x)]
+
+
+def _level(level: float, lang: str) -> str:
+    """NSQF level as the voice says it: 3 -> "3" / "তিন" / "ତିନି", 2.5 -> "आड़ाई"-style words."""
+    from .prompts import number, pack
+    halves = pack(lang)["spoken"].get("halves", {})
+    if level != int(level):
+        return halves.get(f"{level:g}", f"{level:g}")
+    return number(int(level), lang)
+
+
+def spoken(result: dict, why: list | None = None, lang: str = "hi") -> str:
+    """The recommendation tail, as one text for TTS, in the call's language. Titles stay as the
+    register spells them (English). `why`: the overall reasoning lines (reasoning.assess)."""
+    from .prompts import number, pack
+    t = pack(lang)["spoken"]
     picks, near = result["eligible"], result["near_miss"]
     if not picks and not near:
-        return ("अभी आपके जवाबों से मेल खाता कोई कोर्स नहीं मिला। "
-                "हमारे ज़िले के साथी आपसे संपर्क करेंगे।")
-    ordinal = ["पहला", "दूसरा", "तीसरा"]
+        return t["none"]
     parts = []
     if picks:
-        parts.append(f"आपके लिए {len(picks)} कोर्स हैं।")
+        parts.append(t["count"].format(n=number(len(picks), lang)))
+        parts += why or []
     for i, x in enumerate(picks):
         m = months(x.hours)
-        dur = f", करीब {m} महीने का" if m else ""
-        parts.append(f"{ordinal[i]}: {x.title}, लेवल {x.level:g}{dur}। {x.reason}।")
+        dur = t["duration"].format(m=number(m, lang)) if m else ""
+        parts.append(t["item"].format(ord=t["ordinals"][i], title=x.title, level=_level(x.level, lang), dur=dur,
+                                      reason=pack(lang)["reasons"][reason_key(x)]))
     if near:
-        gap = (f"{near.gap_years} साल और अनुभव" if near.gap_years
-               else f"एक और कक्षा की पढ़ाई" if near.gap_class else "थोड़ी और तैयारी")
-        parts.append(f"{near.title} के लिए आपको {gap} चाहिए।")
-    parts.append("हर कोर्स में पैसों के हिसाब किताब की ट्रेनिंग भी मिलती है।")
+        gap = (t["gap_years"].format(n=number(near.gap_years, lang)) if near.gap_years
+               else t["gap_class"] if near.gap_class else t["gap_other"])
+        parts.append(t["near"].format(title=near.title, gap=gap))
+    parts.append(t["finance"])
     if result["self_employment"]:
-        parts.append("अपना काम शुरू करने के लिए पीएम अजय से, बैंक लोन के साथ, "
-                     "पचास हज़ार रुपये तक की मदद मिल सकती है।")
+        parts.append(t["self"])
     return " ".join(parts)

@@ -81,6 +81,13 @@ def endpoint(pcm):
     return None
 
 
+def _same(value, expected):
+    """A district is stored as {"id": "GAYA", "district": …} since open answers: compare the id."""
+    if isinstance(value, dict) and isinstance(expected, str) and "district" in value:
+        return value.get("id") == expected
+    return value == expected
+
+
 def run(rows, engine, conditions, pace=0.0):
     results = {c: [] for c in conditions}
     with httpx.Client(base_url=engine, timeout=30) as c:
@@ -101,7 +108,7 @@ def run(rows, engine, conditions, pace=0.0):
                 ms = round((time.monotonic() - t0) * 1000)
                 heard = (j.get("nbest") or [""])[0]
                 errs, n = wer(row["text"], heard)
-                results[cond].append(dict(row, heard=heard, value=j["value"], ok=j["value"] == expected,
+                results[cond].append(dict(row, heard=heard, value=j["value"], ok=_same(j["value"], expected),
                                           errs=errs, n=n, vad_miss=False, asr=j.get("asr"), ms=ms))
     return results
 

@@ -3,6 +3,7 @@ import uuid
 
 os.environ["ENGINE_DB"] = ":memory:"          # before engine.server creates its store
 os.environ.setdefault("ASR_PROVIDER", "none")
+os.environ["LLM_PROVIDER"] = "none"            # tests never call (or pay for) the real AI
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +34,8 @@ class Caller:
         j = r.json()
         for item in j["say"]:
             if item["kind"] == "prerendered":
-                assert item["id"] in CATALOGUE, f"prompt id {item['id']} missing from catalogue"
+                pid, _, lang = item["id"].partition(".")          # "lang_pick.bn": that language's clip
+                assert pid in (prompts.catalogue(lang) if lang else CATALOGUE), f"prompt id {item['id']} missing"
         return j
 
     def say(self, text):

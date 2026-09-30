@@ -1,0 +1,70 @@
+{
+ "note": "The ONLY things the assistant may say in reply to a side question. The AI picks an id; the engine speaks our own sentence (pre-recorded). Sources: PM-AJAY guidelines (May 2023) via docs/Utsav/research/01-the-customer.md; A0/A11/A12 are service policy.",
+ "facts": [
+  {
+   "id": "A0",
+   "about": "anything not covered below / don't know",
+   "hi": "यह जानकारी हमारे ज़िले के साथी देंगे। चाहें तो हैश दबाइए, वे आपको फ़ोन करेंगे।"
+  },
+  {
+   "id": "A1",
+   "about": "who is calling / what service / which ministry",
+   "hi": "यह पीएम-अजय कौशल सहायता सेवा है। यह सामाजिक न्याय और अधिकारिता मंत्रालय की योजना से जुड़ी है।"
+  },
+  {
+   "id": "A2",
+   "about": "why this call / what is the purpose",
+   "hi": "हम आपकी पढ़ाई, काम और रुचि जानकर, आपके लिए सही हुनर का कोर्स बताते हैं।"
+  },
+  {
+   "id": "A3",
+   "about": "how many questions / how long the call takes",
+   "hi": "कुल सात छोटे सवाल हैं, और लगभग चार-पाँच मिनट लगते हैं।"
+  },
+  {
+   "id": "A4",
+   "about": "privacy / recording / what is saved",
+   "hi": "आपकी आवाज़ हमारे पास नहीं रखी जाती, सिर्फ़ आपके जवाब सहेजे जाते हैं।"
+  },
+  {
+   "id": "A5",
+   "about": "how long the courses are",
+   "hi": "छोटे कोर्स आम तौर पर दो सौ से छह सौ घंटे के होते हैं, यानी लगभग पाँच महीने तक।"
+  },
+  {
+   "id": "A6",
+   "about": "fees, stipend, money for training, centre address, dates",
+   "hi": "फ़ीस, वज़ीफ़ा, सेंटर का पता और तारीख़, यह जानकारी हमारे ज़िले के साथी देंगे।"
+  },
+  {
+   "id": "A7",
+   "about": "what is taught besides the trade",
+   "hi": "हर कोर्स में पैसों के हिसाब-किताब और छोटा प्रोजेक्ट बनाने की ट्रेनिंग भी होती है।"
+  },
+  {
+   "id": "A8",
+   "about": "help to start own business / loan / grant",
+   "hi": "अपना काम शुरू करने के लिए, बैंक लोन के साथ, पचास हज़ार रुपये तक, या प्रोजेक्ट की आधी लागत तक मदद मिल सकती है।"
+  },
+  {
+   "id": "A9",
+   "about": "women / can women join",
+   "hi": "जी हाँ, महिलाएँ ज़रूर जुड़ सकती हैं। हर कोर्स में कम से कम तीस प्रतिशत महिलाएँ होनी चाहिए।"
+  },
+  {
+   "id": "A10",
+   "about": "job after training / placement",
+   "hi": "ट्रेनिंग के बाद, कम से कम सत्तर प्रतिशत लोगों को नौकरी या अपना काम दिलाने का लक्ष्य है।"
+  },
+  {
+   "id": "A11",
+   "about": "talk to a person / officer / human",
+   "hi": "किसी साथी से बात करनी हो, तो हैश दबाइए। वे आपको वापस फ़ोन करेंगे।"
+  },
+  {
+   "id": "A12",
+   "about": "guarantee of job or money / promises",
+   "hi": "हम किसी नौकरी या पैसे का वादा नहीं कर सकते, पर सही कोर्स चुनने में पूरी मदद करेंगे।"
+  }
+ ]
+}
